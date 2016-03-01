@@ -1,0 +1,58 @@
+Macro v1.5
+==========
+
+av Martin Tillenius
+
+
+HISTORIA
+--------
+
+v1.5 -- Läser inställningar från en konfigurationsfil och möjlighet att spara
+        macron för uppspelning på snabbtangent.
+
+v1.4 -- Ändrade programväxlingen till att skicka alt-esc & shift-alt-escape
+        i stället för min egenkonstruerade programväxlare.
+        Lade in en räknarfiness.
+
+v1.3 -- Lade in kontroller för WinAmp v2.x (Win-Z, Win-X, ..., Win-B och Win-Up/Win-Ner)
+
+v1.2 -- Fångar inte längre dubletter av tangenter pga PeekMessage()
+
+v1.1 -- Lade in programväxlingsknappar (Win-Pil höger & Win-Pil vänster)
+
+v1.0 -- Första versionen
+
+
+ANVÄNDNING
+----------
+
+Följande kommandon finns:
+
+COUNTER_DIGITS <heltal>                          -- sätt antal siffror i räknaren
+COUNTER_START <heltal>                           -- sätt vilken siffra räknaren ska börja på
+COUNTER_HEX <ON/OFF>                             -- om räknaren ska räkna i dec (OFF) eller hex (ON)
+
+RECBUTTON <tangent>                              -- aktivera inspelning av makro
+PLAYBUTTON <tangent>                             -- spela upp senaste inspelade makro och som stoppa in
+                                                    nummer från räknaren under inspelning.
+
+MINIMIZE <tangent>                               -- minimera aktiverat fönster
+
+WINAMP_PLAY <tangent>                            -- winamp: spela
+WINAMP_PAUSE <tangent>                           -- winamp: paus
+WINAMP_STOP <tangent>                            -- winamp: stopp
+WINAMP_PREV <tangent>                            -- winamp: föregående
+WINAMP_NEXT <tangent>                            -- winamp: nästa
+WINAMP_VOLUP <tangent>                           -- winamp: öka volym
+WINAMP_VOLDOWN <tangent>                         -- winamp: sänk volym
+WINAMP_PLAYPAUSE <tangent>                       -- winamp: paus i uppspelningsläge, annars spela
+
+PROGRAM <tangent> <program> <kommandorad> <mapp> -- starta program
+ACTIVATE <tangent> <klassnamn> <fönsternamn>     -- aktivera fönster
+FILE <tangent> <filnamn>                         -- kör sparat makro
+
+
+INSTALLATION
+------------
+Placera dll.dll (jag har döpt den själv) i samma mapp som macro.exe. 
+Gör önskade ändringar i macro.cfg.

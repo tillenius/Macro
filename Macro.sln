@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Macro", "Macro.vcproj", "{978F0DD8-6494-490E-B94F-6F89500C137E}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Dll", "Dll\Dll.vcproj", "{668FC9EA-7C16-4A24-836E-818E85CFBF85}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+		Release-DEBUG|Win32 = Release-DEBUG|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{978F0DD8-6494-490E-B94F-6F89500C137E}.Debug|Win32.ActiveCfg = Debug|Win32
+		{978F0DD8-6494-490E-B94F-6F89500C137E}.Debug|Win32.Build.0 = Debug|Win32
+		{978F0DD8-6494-490E-B94F-6F89500C137E}.Release|Win32.ActiveCfg = Release|Win32
+		{978F0DD8-6494-490E-B94F-6F89500C137E}.Release|Win32.Build.0 = Release|Win32
+		{978F0DD8-6494-490E-B94F-6F89500C137E}.Release-DEBUG|Win32.ActiveCfg = Release-DEBUG|Win32
+		{978F0DD8-6494-490E-B94F-6F89500C137E}.Release-DEBUG|Win32.Build.0 = Release-DEBUG|Win32
+		{668FC9EA-7C16-4A24-836E-818E85CFBF85}.Debug|Win32.ActiveCfg = Debug|Win32
+		{668FC9EA-7C16-4A24-836E-818E85CFBF85}.Debug|Win32.Build.0 = Debug|Win32
+		{668FC9EA-7C16-4A24-836E-818E85CFBF85}.Release|Win32.ActiveCfg = Release|Win32
+		{668FC9EA-7C16-4A24-836E-818E85CFBF85}.Release|Win32.Build.0 = Release|Win32
+		{668FC9EA-7C16-4A24-836E-818E85CFBF85}.Release-DEBUG|Win32.ActiveCfg = Release-DEBUG|Win32
+		{668FC9EA-7C16-4A24-836E-818E85CFBF85}.Release-DEBUG|Win32.Build.0 = Release-DEBUG|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
