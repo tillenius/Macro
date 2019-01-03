@@ -2,19 +2,14 @@
 // Microsoft Visual C++ generated include file.
 // Used by Macro.rc
 //
-#define IDCANCEL2                       3
-#define IDD_DIALOG1                     101
+#define IDD_DIALOG_COUNTER              101
 #define IDI_ICON1                       102
 #define IDI_ICON2                       103
 #define IDI_ICON3                       104
 #define IDI_ICON4                       105
-#define IDD_DIALOG2                     107
-#define IDD_DIALOG3                     108
-#define IDC_LIST3                       1004
-#define IDC_LIST1                       1005
-#define IDC_EDIT1                       1006
-#define IDC_EDIT2                       1007
-#define IDC_CHECK1                      1008
+#define IDC_EDIT_COUNTERDIGITS          1006
+#define IDC_EDIT_NEXTCOUNTERVALUE       1007
+#define IDC_CHECK_HEXCOUNTER            1008
 
 // Next default values for new objects
 // 
