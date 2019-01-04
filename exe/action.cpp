@@ -98,6 +98,15 @@ static HWND getHWnd(const std::string & exeName, const std::string & windowName,
     return accepted[0];
 }
 
+static HWND GetCurrentWindow() {
+    HWND hWnd = GetForegroundWindow();
+
+    while (GetParent(hWnd) != NULL)
+        hWnd = GetParent(hWnd);
+
+    return hWnd;
+}
+
 } // namespace
 
 bool Action::activate(const std::string & exeName, const std::string & windowName, const std::string & className) {
@@ -144,10 +153,7 @@ void Action::activateOrRun(const std::string & exeName, const std::string & wind
 }
 
 void Action::minimize() {
-    HWND hWnd = GetForegroundWindow();
-
-    while (GetParent(hWnd) != NULL)
-        hWnd = GetParent(hWnd);
+    HWND hWnd = GetCurrentWindow();
 
     WINDOWPLACEMENT wp = {0};
     wp.length = sizeof(WINDOWPLACEMENT);
@@ -155,6 +161,23 @@ void Action::minimize() {
     GetWindowPlacement(hWnd, &wp);
     wp.showCmd = SW_MINIMIZE;
     SetWindowPlacement(hWnd, &wp);
+}
+
+void Action::moveWindow(int deltaX, int deltaY, int deltaCX, int deltaCY) {
+    HWND hWnd = GetCurrentWindow();
+
+    WINDOWPLACEMENT wp = {0};
+    wp.length = sizeof(WINDOWPLACEMENT);
+
+    GetWindowPlacement(hWnd, &wp);
+    if (wp.showCmd != SW_SHOWNORMAL) {
+        return;
+    }
+
+    RECT rect;
+    if (GetWindowRect(hWnd, &rect)) {
+        MoveWindow(hWnd, rect.left + deltaX, rect.top + deltaY, rect.right - rect.left + deltaCX, rect.bottom - rect.top + deltaCY, TRUE);
+    }
 }
 
 void Action::runSaved(const std::string & fileName, Settings & settings) {

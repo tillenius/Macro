@@ -65,7 +65,7 @@ static bool readKey(std::vector<std::string> words, size_t &idx, UINT &mod, UINT
 
 } // namespace
 
-bool Settings::readConfig(Hotkeys & hotkeys, std::string & errorMsg) {
+bool Settings::readConfig(Hotkeys & hotkeys, Midi & midi, std::string & errorMsg) {
 
     std::ifstream prefs;
 
@@ -91,17 +91,27 @@ bool Settings::readConfig(Hotkeys & hotkeys, std::string & errorMsg) {
 
         size_t z = 1;
 
-        struct { const char * name; int numArgs; bool key; } table[] = {
-            {"COUNTER_DIGITS", 1, false},
-            {"COUNTER_START", 1, false},
-            {"COUNTER_HEX", 1, false},
-            {"RECBUTTON", 0, true},
-            {"PLAYBUTTON", 0, true},
-            {"MINIMIZE", 0, true},
-            {"PROGRAM", 3, true},
-            {"ACTIVATE", 3, true},
-            {"RUNORACTIVATE", 6, true},
-            {"FILE", 1, true}
+        const int NONE = 0;
+        const int KEY = 1;
+        const int MIDI = 2;
+        struct { const char * name; int numArgs; int input; } table[] = {
+            {"COUNTER_DIGITS", 1, NONE},
+            {"COUNTER_START", 1, NONE},
+            {"COUNTER_HEX", 1, NONE},
+            {"MIDIINTERFACE", -1, NONE},
+            {"MIDIBUTTON", 3, NONE},
+            {"MIDIRELENC", 3, NONE},
+            {"RECBUTTON", 0, KEY | MIDI},
+            {"PLAYBUTTON", 0, KEY | MIDI},
+            {"MINIMIZE", 0, KEY | MIDI},
+            {"PROGRAM", 3, KEY | MIDI},
+            {"ACTIVATE", 3, KEY | MIDI},
+            {"RUNORACTIVATE", 6, KEY | MIDI},
+            {"FILE", 1, KEY | MIDI},
+            {"MOVEWINDOWX", 0, MIDI},
+            {"MOVEWINDOWY", 0, MIDI},
+            {"RESIZEWINDOWX", 0, MIDI},
+            {"RESIZEWINDOWY", 0, MIDI},
         };
 
         int index = -1;
@@ -120,15 +130,26 @@ bool Settings::readConfig(Hotkeys & hotkeys, std::string & errorMsg) {
         std::string msg;
         UINT mod;
         UINT key;
+        int midiChannel = -1;
+        int midiController = -1;
 
-        if (table[index].key) {
+        if ((table[index].input & MIDI) != 0) {
+            if (words.size() > z + 2 && words[z] == "MIDI") {
+                ++z;
+                midiChannel = std::stoi(words[z++]);
+                midiController = std::stoi(words[z++]);
+            } else if (table[index].input == MIDI) {
+                errorMsg = "Line " + std::to_string(lineCount) + ": invalid midi config for command " + words[0] + ".";
+            }
+        }
+        if (midiChannel == -1 && (table[index].input & KEY) != 0) {
             if (!readKey(words, z, mod, key, msg)) {
                 errorMsg = "Line " + std::to_string(lineCount) + ": " + msg + " for command " + words[0] + ".";
                 return false;
             }
         }
 
-        if (words.size() != z + table[index].numArgs) {
+        if (words.size() != z + table[index].numArgs && table[index].numArgs != -1) {
             errorMsg = "Line " + std::to_string(lineCount) + ": Wrong number of arguments for command " + words[0] + ".";
             return false;
         }
@@ -152,18 +173,54 @@ bool Settings::readConfig(Hotkeys & hotkeys, std::string & errorMsg) {
             m_recbutton = key;
         } else if (words[0] == "PLAYBUTTON") {
             m_playbutton = key;
+        } else if (words[0] == "MIDIINTERFACE") {
+            if (words.size() > 1) {
+                midi.init(words[1]);
+            } else {
+                midi.init("");
+            }
+        } else if (words[0] == "MIDIBUTTON") {
+            const int button = std::stoi(words[1]);
+            const int channel = std::stoi(words[2]);
+            const int controller = std::stoi(words[3]);
+            midi.addButton(button, channel, controller);
+        } else if (words[0] == "MIDIRELENC") {
+            const int encoder = std::stoi(words[1]);
+            const int channel = std::stoi(words[2]);
+            const int controller = std::stoi(words[3]);
+            midi.addRelativeEncoder(encoder, channel, controller);
         } else if (words[0] == "MINIMIZE") {
-            hotkeys.add(mod, key, []() { Action::minimize(); });
+            if (midiChannel != -1) {
+                midi.add(midiChannel, midiController, [](int data) { Action::minimize(); });
+            } else {
+                hotkeys.add(mod, key, []() { Action::minimize(); });
+            }
+        } else if (words[0] == "MOVEWINDOWX") {
+            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(data-64, 0, 0, 0); });
+        } else if (words[0] == "MOVEWINDOWY") {
+            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(0, data-64, 0, 0); });
+        } else if (words[0] == "RESIZEWINDOWX") {
+            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(0, 0, data-64, 0); });
+        } else if (words[0] == "RESIZEWINDOWY") {
+            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(0, 0, 0, data-64); });
         } else if (words[0] == "PROGRAM") {
             const std::string & appName = words[z++];
             const std::string & cmdLine = words[z++];
             const std::string & currDir = words[z++];
-            hotkeys.add(mod, key, [appName, cmdLine, currDir]() { Action::run(appName, cmdLine, currDir, SW_SHOW); });
+            if (midiChannel != -1) {
+                midi.add(midiChannel, midiController, [appName, cmdLine, currDir](int data) { Action::run(appName, cmdLine, currDir, SW_SHOW); });
+            } else {
+                hotkeys.add(mod, key, [appName, cmdLine, currDir]() { Action::run(appName, cmdLine, currDir, SW_SHOW); });
+            }
         } else if (words[0] == "ACTIVATE") {
             const std::string & exeName = words[z++];
             const std::string & windowName = words[z++];
             const std::string & className = words[z++];
-            hotkeys.add(mod, key, [exeName, windowName, className]() { Action::activate(exeName, windowName, className); });
+            if (midiChannel != -1) {
+                midi.add(midiChannel, midiController, [exeName, windowName, className](int data) { Action::activate(exeName, windowName, className); });
+            } else {
+                hotkeys.add(mod, key, [exeName, windowName, className]() { Action::activate(exeName, windowName, className); });
+            }
         } else if (words[0] == "RUNORACTIVATE") {
             const std::string & appName = words[z++];
             const std::string & cmdLine = words[z++];
@@ -171,10 +228,18 @@ bool Settings::readConfig(Hotkeys & hotkeys, std::string & errorMsg) {
             const std::string & exeName = words[z++];
             const std::string & windowName = words[z++];
             const std::string & className = words[z++];
-            hotkeys.add(mod, key, [appName, cmdLine, currDir, exeName, windowName, className]() { Action::activateOrRun(exeName, windowName, className, appName, cmdLine, currDir, SW_SHOW); });
+            if (midiChannel != -1) {
+                midi.add(midiChannel, midiController, [appName, cmdLine, currDir, exeName, windowName, className](int data) { Action::activateOrRun(exeName, windowName, className, appName, cmdLine, currDir, SW_SHOW); });
+            } else {
+                hotkeys.add(mod, key, [appName, cmdLine, currDir, exeName, windowName, className]() { Action::activateOrRun(exeName, windowName, className, appName, cmdLine, currDir, SW_SHOW); });
+            }
         } else if (words[0] == "FILE") {
             const std::string & fileName = words[z++];
-            hotkeys.add(mod, key, [fileName, this]() { Action::runSaved(fileName, *this); });
+            if (midiChannel != -1) {
+                midi.add(midiChannel, midiController, [fileName, this](int data) { Action::runSaved(fileName, *this); });
+            } else {
+                hotkeys.add(mod, key, [fileName, this]() { Action::runSaved(fileName, *this); });
+            }
         } else {
             errorMsg = "Line " + std::to_string(lineCount) + ": Unknown command " + words[0];
             return false;

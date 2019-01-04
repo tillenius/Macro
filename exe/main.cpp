@@ -94,7 +94,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 MacroApp::MacroApp(HINSTANCE hInstance, HWND hWnd) : m_hInstance(hInstance), m_hWnd(hWnd), m_systray(hInstance, hWnd), m_hotkeys(hWnd), m_macro(m_settings) {
     std::string errorMsg;
-    if (!m_settings.readConfig(m_hotkeys, errorMsg)) {
+    if (!m_settings.readConfig(m_hotkeys, m_midi, errorMsg)) {
         errorMsg = "Error reading configuration file\n" + errorMsg;
         MessageBox(0, errorMsg.c_str(), 0, MB_OK);
     }

@@ -130,6 +130,7 @@
     <ClCompile Include="hotkeys.cpp" />
     <ClCompile Include="macro.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="midi.cpp" />
     <ClCompile Include="settings.cpp" />
     <ClCompile Include="settingsdlg.cpp" />
     <ClCompile Include="systray.cpp" />
@@ -141,6 +142,7 @@
     <ClInclude Include="keynames.h" />
     <ClInclude Include="macro.h" />
     <ClInclude Include="main.h" />
+    <ClInclude Include="midi.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="settings.h" />
     <ClInclude Include="settingsdlg.h" />
