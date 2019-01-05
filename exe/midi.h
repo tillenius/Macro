@@ -35,5 +35,5 @@ public:
     bool sendControlChange(char channel, char controller, char value);
     bool sendSysex(int size, char * data);
     bool addButton(int button, int channel, int controller);
-    bool addRelativeEncoder(int encoder, int channel, int controller);
+    bool addRelativeEncoder(int encoder, int channel, int controller, std::string resolution);
 };

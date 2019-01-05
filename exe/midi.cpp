@@ -69,13 +69,13 @@ public:
         return m;
     }
 
-    static bcl_msg_t relativeEncoder(int encoder, int channel, int controller) {
+    static bcl_msg_t relativeEncoder(int encoder, int channel, int controller, std::string resolution) {
         bcl_msg_t m;
         m("$rev R1");
         m("$encoder %d", encoder);
         m("  .showvalue off");
         m("  .easypar CC %d %d 0 127 relative-2", channel, controller);
-        m("  .resolution 96 192 768 2304");
+        m(("  .resolution " + resolution).c_str());
         m("  .mode 1dot/off");
         m("$end");
         return m;
@@ -224,7 +224,10 @@ bool Midi::addButton(int button, int channel, int controller) {
     return sendSysex((int) m.data.size(), &m.data[0]);
 }
 
-bool Midi::addRelativeEncoder(int encoder, int channel, int controller) {
-    BCL::bcl_msg_t m{BCL::relativeEncoder(encoder, channel, controller)};
+bool Midi::addRelativeEncoder(int encoder, int channel, int controller, std::string resolution) {
+    if (resolution.empty()) {
+        resolution = "96 192 768 2304";
+    }
+    BCL::bcl_msg_t m{BCL::relativeEncoder(encoder, channel, controller, resolution)};
     return sendSysex((int) m.data.size(), &m.data[0]);
 }

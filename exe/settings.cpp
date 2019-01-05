@@ -100,18 +100,22 @@ bool Settings::readConfig(Hotkeys & hotkeys, Midi & midi, std::string & errorMsg
             {"COUNTER_HEX", 1, NONE},
             {"MIDIINTERFACE", -1, NONE},
             {"MIDIBUTTON", 3, NONE},
-            {"MIDIRELENC", 3, NONE},
+            {"MIDIRELENC", -1, NONE},
             {"RECBUTTON", 0, KEY | MIDI},
             {"PLAYBUTTON", 0, KEY | MIDI},
             {"MINIMIZE", 0, KEY | MIDI},
+            {"NEXTWINDOW", 0, KEY | MIDI},
+            {"PREVWINDOW", 0, KEY | MIDI},
             {"PROGRAM", 3, KEY | MIDI},
             {"ACTIVATE", 3, KEY | MIDI},
             {"RUNORACTIVATE", 6, KEY | MIDI},
             {"FILE", 1, KEY | MIDI},
+            {"MOVEWINDOW", -1, KEY | MIDI},
             {"MOVEWINDOWX", 0, MIDI},
             {"MOVEWINDOWY", 0, MIDI},
             {"RESIZEWINDOWX", 0, MIDI},
             {"RESIZEWINDOWY", 0, MIDI},
+            {"SWITCHWINDOW", 0, MIDI},
         };
 
         int index = -1;
@@ -185,24 +189,60 @@ bool Settings::readConfig(Hotkeys & hotkeys, Midi & midi, std::string & errorMsg
             const int controller = std::stoi(words[3]);
             midi.addButton(button, channel, controller);
         } else if (words[0] == "MIDIRELENC") {
-            const int encoder = std::stoi(words[1]);
-            const int channel = std::stoi(words[2]);
-            const int controller = std::stoi(words[3]);
-            midi.addRelativeEncoder(encoder, channel, controller);
+            if (3 < words.size()) {
+                const int encoder = std::stoi(words[1]);
+                const int channel = std::stoi(words[2]);
+                const int controller = std::stoi(words[3]);
+                if (4 < words.size()) {
+                    midi.addRelativeEncoder(encoder, channel, controller, words[4]);
+                } else {
+                    midi.addRelativeEncoder(encoder, channel, controller, "");
+                }
+            }
         } else if (words[0] == "MINIMIZE") {
             if (midiChannel != -1) {
                 midi.add(midiChannel, midiController, [](int data) { Action::minimize(); });
             } else {
                 hotkeys.add(mod, key, []() { Action::minimize(); });
             }
+        } else if (words[0] == "NEXTWINDOW") {
+            if (midiChannel != -1) {
+                midi.add(midiChannel, midiController, [](int data) { Action::nextWindow(); });
+            } else {
+                hotkeys.add(mod, key, []() { Action::nextWindow(); });
+            }
+        } else if (words[0] == "PREVWINDOW") {
+            if (midiChannel != -1) {
+                midi.add(midiChannel, midiController, [](int data) { Action::prevWindow(); });
+            } else {
+                hotkeys.add(mod, key, []() { Action::prevWindow(); });
+            }
+        } else if (words[0] == "MOVEWINDOW") {
+            if (z + 2 <= words.size()) {
+                const int x = atoi(words[z++].c_str());
+                const int y = atoi(words[z++].c_str());
+                int cx = -1;
+                int cy = -1;
+                if (z + 2 <= words.size()) {
+                    cx = atoi(words[z++].c_str());
+                    cy = atoi(words[z++].c_str());
+                }
+                if (midiChannel != -1) {
+                    midi.add(midiChannel, midiController, [x,y,cx,cy](int data) { Action::setWindowPos(x, y, cx, cy); });
+                } else {
+                    hotkeys.add(mod, key, [x,y,cx,cy]() { Action::setWindowPos(x, y, cx, cy); });
+                }
+            }
         } else if (words[0] == "MOVEWINDOWX") {
-            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(data-64, 0, 0, 0); });
+            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(data - 64, 0, 0, 0); });
         } else if (words[0] == "MOVEWINDOWY") {
-            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(0, data-64, 0, 0); });
+            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(0, data - 64, 0, 0); });
         } else if (words[0] == "RESIZEWINDOWX") {
-            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(0, 0, data-64, 0); });
+            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(0, 0, data - 64, 0); });
         } else if (words[0] == "RESIZEWINDOWY") {
-            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(0, 0, 0, data-64); });
+            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(0, 0, 0, data - 64); });
+        } else if (words[0] == "SWITCHWINDOW") {
+            midi.add(midiChannel, midiController, [](int data) { Action::switchWindow(data - 64); });
         } else if (words[0] == "PROGRAM") {
             const std::string & appName = words[z++];
             const std::string & cmdLine = words[z++];
