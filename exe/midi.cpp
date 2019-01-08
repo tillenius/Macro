@@ -4,96 +4,8 @@
 
 #pragma comment(lib, "winmm.lib")
 
-class BCL {
-public:
-    struct bcl_msg_t {
-        int idx;
-        std::vector<char> data;
-
-        bcl_msg_t() : idx(0) {}
-
-        void operator()(const char *format, ...) {
-            data.push_back('\xf0'); // SysEx
-            data.push_back('\x00'); data.push_back(0x20); data.push_back(0x32); // Manufacturer
-            data.push_back('\x7f'); // DeviceID: any
-            data.push_back('\x15'); // Model: BCR2000
-            data.push_back('\x20'); // Command: BCL message
-            data.push_back(static_cast<char>((idx & 0xff00) >> 8));
-            data.push_back(static_cast<char>(idx & 0xff));
-
-            char buffer[80];
-            va_list argptr;
-            va_start(argptr, format);
-            vsnprintf(buffer, sizeof(buffer), format, argptr);
-            va_end(argptr);
-
-            for (char *ptr = buffer; *ptr != '\0'; ++ptr) {
-                data.push_back(*ptr);
-            }
-
-            data.push_back('\xf7'); // End
-            ++idx;
-        }
-    };
-
-    static bcl_msg_t button(int button, int channel, int controller) {
-        bcl_msg_t m;
-        m("$rev R1");
-        m("$button %d", button);
-        m("  .showvalue on");
-        m("  .easypar CC %d %d 0 1 toggleon", channel, controller);
-        m("  .mode down");
-        m("$end");
-        return m;
-    }
-
-    static bcl_msg_t toggleButton(int button, int channel, int controller) {
-        bcl_msg_t m;
-        m("$rev R1");
-        m("$button %d", button);
-        m("  .showvalue on");
-        m("  .easypar CC %d %d 0 1 toggleoff", channel, controller);
-        m("  .mode toggle");
-        m("$end");
-        return m;
-    }
-
-    static bcl_msg_t onOffButton(int button, int channel, int controller) {
-        bcl_msg_t m;
-        m("$rev R1");
-        m("$button %d", button);
-        m("  .showvalue on");
-        m("  .easypar CC %d %d 0 1 toggleoff", channel, controller);
-        m("  .mode updown");
-        m("$end");
-        return m;
-    }
-
-    static bcl_msg_t relativeEncoder(int encoder, int channel, int controller, std::string resolution) {
-        bcl_msg_t m;
-        m("$rev R1");
-        m("$encoder %d", encoder);
-        m("  .showvalue off");
-        m("  .easypar CC %d %d 0 127 relative-2", channel, controller);
-        m(("  .resolution " + resolution).c_str());
-        m("  .mode 1dot/off");
-        m("$end");
-        return m;
-    }
-
-    static bcl_msg_t absoluteEncoder(int encoder, int channel, int controller, int minVal, int maxVal, bool hires) {
-        bcl_msg_t m;
-        m("$rev R1");
-        m("$encoder %d", encoder);
-        m("  .showvalue on");
-        m("  .easypar CC %d %d %d %d absolute%s", channel, controller, minVal, maxVal, hires ? "/14" : "");
-        m("  .mode bar");
-        m("$end");
-        return m;
-    }
-};
-
 bool Midi::init(const std::string & midiDeviceName) {
+    stop();
     const UINT num_in_devs = midiInGetNumDevs();
     for (UINT i = 0; i < num_in_devs; i++) {
         MIDIINCAPS mic;
@@ -130,12 +42,18 @@ bool Midi::init(const std::string & midiDeviceName) {
 }
 
 Midi::~Midi() {
+    stop();
+}
+
+void Midi::stop() {
     if (m_hMidiIn != NULL) {
         midiInStop(m_hMidiIn);
         midiInClose(m_hMidiIn);
+        m_hMidiIn = NULL;
     }
     if (m_hMidiOut != NULL) {
         midiOutClose(m_hMidiOut);
+        m_hMidiOut = NULL;
     }
 }
 
@@ -207,27 +125,25 @@ void Midi::add(int channel, int controller, std::function<void(int)> callback) {
 }
 
 void CALLBACK Midi::MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
+    Midi * midi = (Midi *) dwInstance;
     if (wMsg == MIM_DATA) {
-        Midi * midi = (Midi *) dwInstance;
         const int CHANNEL_MASK = 0x0f;
         const int TYPE_MASK = 0xf0;
-        const int TYPE_CONTROL_CHANGE = 0xb0;
-        if ((dwParam1 & TYPE_MASK) == TYPE_CONTROL_CHANGE) {
-            midi->receive(1 + dwParam1 & CHANNEL_MASK, (dwParam1 & 0xff00) >> 8, (dwParam1 & 0xff0000) >> 16);
+        const int TYPE_CONTROL_CHANGE = 0xb;
+        const int type = ( dwParam1 & TYPE_MASK ) >> 4;
+        const int channel = 1 + dwParam1 & CHANNEL_MASK;
+        const int controller = (dwParam1 & 0xff00) >> 8;
+        const int data = (dwParam1 & 0xff0000) >> 16;
+        if (midi->m_debug) {
+            OutputDebugString((std::string("MIDI: MIM_DATA type = ") + std::to_string(type) +
+                               " channel = " + std::to_string(channel) +
+                               " controller=" + std::to_string(controller) +
+                               " data=" + std::to_string(data) + "\n").c_str());
         }
+        if (type == TYPE_CONTROL_CHANGE) {
+            midi->receive(channel, controller, data);
+        }
+    } else if (midi->m_debug) {
+        OutputDebugString((std::string("MIDI: msg=") + std::to_string(wMsg) + " param1=" + std::to_string(dwParam1) + " param2=" + std::to_string(dwParam2) + "\n").c_str());
     }
-    return;
-}
-
-bool Midi::addButton(int button, int channel, int controller) {
-    BCL::bcl_msg_t m{BCL::button(button, channel, controller)};
-    return sendSysex((int) m.data.size(), &m.data[0]);
-}
-
-bool Midi::addRelativeEncoder(int encoder, int channel, int controller, std::string resolution) {
-    if (resolution.empty()) {
-        resolution = "96 192 768 2304";
-    }
-    BCL::bcl_msg_t m{BCL::relativeEncoder(encoder, channel, controller, resolution)};
-    return sendSysex((int) m.data.size(), &m.data[0]);
 }

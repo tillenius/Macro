@@ -1,0 +1,243 @@
+    m.def("bring_window_to_top", [](pyHWND hwnd) {
+        ::BringWindowToTop((HWND) hwnd);
+    });
+    m.def("close_window", [](pyHWND hwnd) {
+        ::CloseWindow((HWND) hwnd);
+    });
+    m.def("destroy_window", [](pyHWND hwnd) {
+        ::DestroyWindow((HWND) hwnd);
+    });
+    m.def("find_window", [](const std::string & className, const std::string & windowName) {
+        return (pyHWND) ::FindWindow(className.empty() ? NULL : className.c_str(), windowName.empty() ? NULL : windowName.c_str());
+    });
+    m.def("get_ancestor_parent", [](pyHWND hwnd) {
+        return (pyHWND) ::GetAncestor((HWND) hwnd, GA_PARENT);
+    });
+    m.def("get_ancestor_root", [](pyHWND hwnd) {
+        return (pyHWND) ::GetAncestor((HWND) hwnd, GA_ROOT);
+    });
+    m.def("get_ancestor_rootowner", [](pyHWND hwnd) {
+        return (pyHWND) ::GetAncestor((HWND) hwnd, GA_ROOTOWNER);
+    });
+    m.def("get_client_rect", [](pyHWND hwnd) {
+        RECT rect;
+        if (::GetClientRect((HWND) hwnd, &rect) == 0) {
+            return std::tuple<int, int, int, int>(-1, -1, -1, -1);
+        }
+        return makeTuple(rect);
+    });
+    m.def("get_desktop_window", [](pyHWND hwnd) {
+        return (pyHWND) ::GetDesktopWindow();
+    });
+    m.def("get_foreground_window", [](pyHWND hwnd) {
+        return (pyHWND) ::GetForegroundWindow();
+    });
+    m.def("get_gui_thread_info", [](DWORD threadId) {
+        py::dict ret;
+        GUITHREADINFO gti;
+        ::ZeroMemory(&gti, sizeof(GUITHREADINFO));
+        gti.cbSize = sizeof(GUITHREADINFO);
+        if (::GetGUIThreadInfo(threadId, &gti) == 0) {
+            return ret;
+        }
+        ret["flags"] = gti.flags;
+        ret["hwndActive"] = gti.hwndActive;
+        ret["hwndFocus"] = gti.hwndFocus;
+        ret["hwndCapture"] = gti.hwndCapture;
+        ret["hwndMenuOwner"] = gti.hwndMenuOwner;
+        ret["hwndMoveSize"] = gti.hwndMoveSize;
+        ret["hwndCaret"] = gti.hwndCaret;
+        ret["caretRect"] = makeTuple(gti.rcCaret);
+        return ret;
+    });
+    m.def("get_parent", [](pyHWND hwnd) {
+        return (pyHWND) ::GetParent((HWND) hwnd);
+    });
+    m.def("get_shell_window", []() {
+        return (pyHWND) ::GetShellWindow();
+    });
+    m.def("get_top_window", [](pyHWND hwnd) {
+        return (pyHWND) ::GetTopWindow((HWND) hwnd);
+    });
+    m.def("get_window_info", [](pyHWND hwnd) {
+        py::dict ret;
+        WINDOWINFO wi;
+        ::ZeroMemory(&wi, sizeof(WINDOWINFO));
+        wi.cbSize = sizeof(WINDOWINFO);
+        if (::GetWindowInfo((HWND) hwnd, &wi) == 0) {
+            return ret;
+        }
+        ret["rcWindow"] = makeTuple(wi.rcWindow);
+        ret["rcClient"] = makeTuple(wi.rcClient);
+        ret["dwStyle"] = wi.dwStyle;
+        ret["dwExStyle"] = wi.dwExStyle;
+        ret["dwWindowStatus"] = wi.dwWindowStatus;
+        ret["cxWindowBorders"] = wi.cxWindowBorders;
+        ret["cyWindowBorders"] = wi.cyWindowBorders;
+        return ret;
+    });
+    m.def("get_window_module_filename", [](pyHWND hwnd) {
+        if (::GetWindowModuleFileNameA((HWND) hwnd, buffer, sizeof(buffer)) == 0) {
+            return std::string();
+        }
+        return std::string(&buffer[0]);
+    });
+    m.def("get_window_placement", [](pyHWND hwnd) {
+        py::dict ret;
+        WINDOWPLACEMENT wp;
+        ::ZeroMemory(&wp, sizeof(WINDOWPLACEMENT));
+        wp.length = sizeof(WINDOWPLACEMENT);
+        if (::GetWindowPlacement((HWND) hwnd, &wp) == 0) {
+            return ret;
+        }
+        ret["flags"] = wp.flags;
+        ret["showCmd"] = wp.showCmd;
+        ret["ptMinPosition"] = makeTuple(wp.ptMinPosition);
+        ret["ptMaxPosition"] = makeTuple(wp.ptMaxPosition);
+        ret["rcNormalPosition"] = makeTuple(wp.rcNormalPosition);
+        return ret;
+    });
+    m.def("get_window_rect", [](pyHWND hwnd) {
+        RECT rect;
+        if (::GetWindowRect((HWND) hwnd, &rect) == 0) {
+            return std::tuple<int, int, int, int>(-1, -1, -1, -1);
+        }
+        return makeTuple(rect);
+    });
+    m.def("get_window_threadid", [](pyHWND hwnd) {
+        return ::GetWindowThreadProcessId((HWND) hwnd, NULL);
+    });
+    m.def("get_window_processid", [](pyHWND hwnd) {
+        DWORD processId;
+        ::GetWindowThreadProcessId((HWND) hwnd, &processId);
+        return processId;
+    });
+    m.def("is_child", [](pyHWND hwndParent, pyHWND hwnd) {
+        return ::IsChild((HWND) hwndParent, (HWND) hwnd) != 0;
+    });
+    m.def("is_iconic", [](pyHWND hwnd) {
+        return ::IsIconic((HWND) hwnd) != 0;
+    });
+    m.def("is_window", [](pyHWND hwnd) {
+        return ::IsWindow((HWND) hwnd) != 0;
+    });
+    m.def("is_window_unicode", [](pyHWND hwnd) {
+        return ::IsWindowUnicode((HWND) hwnd) != 0;
+    });
+    m.def("is_window_visible", [](pyHWND hwnd) {
+        return ::IsWindowVisible((HWND) hwnd) != 0;
+    });
+    m.def("is_zoomed", [](pyHWND hwnd) { // maximized
+        return ::IsZoomed((HWND) hwnd) != 0;
+    });
+    m.def("kill_timer", [](pyHWND hwnd, void * eventId) {
+        return ::KillTimer((HWND) hwnd, (UINT_PTR) eventId) != 0;
+    });
+    m.def("move_window", [](pyHWND hwnd, int x, int y, int cx, int cy, bool repaint) {
+        return ::MoveWindow((HWND) hwnd, x, y, cx, cy, repaint) != 0;
+    });
+    m.def("open_icon", [](pyHWND hwnd) { // restore minimized window
+        return ::OpenIcon((HWND) hwnd) != 0;
+    });
+    m.def("real_child_window_from_point", [](pyHWND hwnd, int parentClientX, int parentClientY) {
+        POINT p;
+        p.x = parentClientX;
+        p.y = parentClientY;
+        return (pyHWND) ::RealChildWindowFromPoint((HWND) hwnd, p);
+    });
+    m.def("window_from_point", [](int x, int y) {
+        POINT p;
+        p.x = x;
+        p.y = y;
+        return (pyHWND) ::WindowFromPoint(p);
+    });
+    m.def("child_window_from_point", [](pyHWND hwnd, int x, int y) {
+        POINT p;
+        p.x = x;
+        p.y = y;
+        return (pyHWND) ::ChildWindowFromPoint((HWND) hwnd, p);
+    });
+    m.def("set_foreground_window", [](pyHWND hwnd) {
+        return ::SetForegroundWindow((HWND) hwnd) != 0;
+    });
+    m.def("set_parent", [](pyHWND hwndChild, pyHWND hwndNewParent) {
+        return (pyHWND) ::SetParent((HWND) hwndChild, (HWND) hwndNewParent);
+    });
+    m.def("show_window", [](pyHWND hwnd, int cmdShow) {
+        return ::ShowWindow((HWND) hwnd, cmdShow) != 0;
+    });
+    m.def("show_window_async", [](pyHWND hwnd, int cmdShow) {
+        return ::ShowWindowAsync((HWND) hwnd, cmdShow) != 0;
+    });
+    m.def("switch_to_this_window", [](pyHWND hwnd, bool altTab) {
+        ::SwitchToThisWindow((HWND) hwnd, altTab ? TRUE : FALSE);
+    });
+
+    // dialogs
+
+    m.def("get_dlg_ctrl_id", [](pyHWND hwnd) {
+        return ::GetDlgCtrlID((HWND) hwnd);
+    });
+    m.def("get_dlg_item", [](pyHWND hwnd, int id) {
+        return (pyHWND) ::GetDlgItem((HWND) hwnd, id);
+    });
+    m.def("get_dlg_item_int", [](pyHWND hwnd, int id, bool sign) {
+        return ::GetDlgItemInt((HWND) hwnd, id, NULL, sign);
+    });
+    m.def("get_dlg_item_text", [](pyHWND hwnd, int id) {
+        ::GetDlgItemText((HWND) hwnd, id, buffer, sizeof(buffer));
+        return std::string(&buffer[0]);
+    });
+    m.def("get_dlg_item", [](pyHWND hwnd, int id) {
+        return (pyHWND) ::GetDlgItem((HWND) hwnd, id);
+    });
+    m.def("get_next_dlg_group_item", [](pyHWND hwndDlg, pyHWND hwndCtl, bool prev) {
+        return (pyHWND) ::GetNextDlgGroupItem((HWND) hwndDlg, (HWND) hwndCtl, prev);
+    });
+    m.def("get_next_dlg_tab_item", [](pyHWND hwndDlg, pyHWND hwndCtl, bool prev) {
+        return (pyHWND) ::GetNextDlgTabItem((HWND) hwndDlg, (HWND) hwndCtl, prev);
+    });
+    m.def("set_dlg_item_int", [](pyHWND hwnd, int id, UINT value, bool sign) {
+        return ::SetDlgItemInt((HWND) hwnd, id, value, sign) != 0;
+    });
+    m.def("set_dlg_item_text", [](pyHWND hwnd, int id, const std::string & text) {
+        return ::SetDlgItemText((HWND) hwnd, id, text.c_str()) != 0;
+    });
+
+    // Keyboard and Mouse input
+
+    m.def("enable_window", [](pyHWND hwnd, bool enable) {
+        return ::EnableWindow((HWND) hwnd, enable) != 0;
+    });
+    m.def("get_active_window", []() {
+        return (pyHWND) ::GetActiveWindow();
+    });
+    m.def("get_async_key_state", [](int vkey) {
+        return (pyHWND) ::GetAsyncKeyState(vkey);
+    });
+    m.def("get_key_state", [](int vkey) {
+        return (pyHWND) ::GetKeyState(vkey);
+    });
+    m.def("is_window_enabled", [](pyHWND hwnd) {
+        return ::IsWindowEnabled((HWND) hwnd) != 0;
+    });
+    m.def("set_active_window", [](pyHWND hwnd) {
+        return (pyHWND) ::SetActiveWindow((HWND) hwnd);
+    });
+    m.def("set_focus", [](pyHWND hwnd) {
+        return (pyHWND) ::SetFocus((HWND) hwnd);
+    });
+
+    // mouse cursor pos
+
+    m.def("get_cursor_pos", []() {
+        POINT p;
+        if (::GetCursorPos(&p) == 0) {
+            return std::tuple<int, int>(-1, -1);
+        }
+        return makeTuple(p);
+    });
+    m.def("set_cursor_pos", [](int x, int y) {
+        return ::SetCursorPos(x, y) != 0;
+    });
+

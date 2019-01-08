@@ -13,4 +13,5 @@ public:
     SysTray(HINSTANCE hInstance, HWND hWnd) : hWnd(hWnd), hInstance(hInstance) {}
     ~SysTray();
     void Icon(int icon);
+    void Notification(const char * message);
 };

@@ -9,17 +9,15 @@ class Macro {
 private:
     std::vector<DWORD> m_macro;
     size_t m_nIgnoreCount = 0;
-    Settings & m_settings;
 
 public:
-    Macro(Settings & settings) : m_settings(settings) {}
-
-    void playback();
-    void gotKey(WPARAM wParam, DWORD lParam);
+    static void playback(Settings & settings, const std::vector<DWORD> & macro);
+    void gotKey(Settings & settings, WPARAM wParam, DWORD lParam);
     void clear();
     void save(const char * filename);
     void load(const char * filename);
+    const std::vector<DWORD> & get() { return m_macro; };
 
 private:
-    void insertCounter(std::vector<INPUT> &lKeys);
+    static void insertCounter(Settings & settings, std::vector<INPUT> & lKeys);
 };

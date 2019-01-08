@@ -2,10 +2,12 @@
 
 #include <unordered_map>
 #include <string>
+#include <algorithm>
+#include "util/tokenizer.h"
 
 class Keynames {
 public:
-    static const std::unordered_map<std::string, DWORD> & GetMap() {
+    static const std::unordered_map<std::string, DWORD> & getMap() {
         static const std::unordered_map<std::string, DWORD> map{
             {"LBUTTON"             ,0x01},
             {"RBUTTON"             ,0x02},
@@ -201,8 +203,8 @@ public:
         return map;
     }
 
-    static std::string GetKeyName(DWORD vk) {
-        for (auto & it : GetMap()) {
+    static std::string getKeyName(DWORD vk) {
+        for (auto & it : getMap()) {
             if (it.second == vk) {
                 return it.first;
             }
@@ -212,7 +214,7 @@ public:
         return buf;
     }
 
-    static int GetModValue(const std::string & name) {
+    static int getModValue(const std::string & name) {
         if (name == "ALT") {
             return MOD_ALT;
         } else if (name == "CONTROL" || name == "CTRL") {
@@ -225,7 +227,7 @@ public:
         return 0;
     }
 
-    static std::string GetModName(DWORD mod) {
+    static std::string getModName(DWORD mod) {
         std::string ret;
         if ((mod & MOD_SHIFT) != 0) {
             ret += "SHIFT";
@@ -248,11 +250,64 @@ public:
         return ret;
     }
 
-    static std::string GetName(DWORD mod, DWORD vk) {
-        std::string ret = GetModName(mod);
+    static std::string getName(DWORD mod, DWORD vk) {
+        std::string ret = getModName(mod);
         if (!ret.empty())
             ret += " ";
-        ret += GetKeyName(vk);
+        ret += getKeyName(vk);
         return ret;
     }
+
+    static DWORD readMod(const std::vector<std::string> & words, size_t & i, std::string & errorMsg) {
+        DWORD modifier = 0;
+
+        for (; i < words.size(); i++) {
+            const int mod = getModValue(words[i]);
+            if (mod != 0) {
+                if ((modifier & mod) != 0) {
+                    errorMsg = "Modifier " + words[i] + " repeated";
+                    return 0;
+                }
+                modifier |= mod;
+            } else {
+                return modifier;
+            }
+        }
+        return modifier;
+    }
+
+    static DWORD readKeyName(const std::string & key, std::string & errorMsg) {
+        // hex
+        if (key.size() > 2 && key[0] == '#')
+            return strtoul(key.c_str() + 1, 0, 16);
+
+        // name
+        std::unordered_map<std::string, DWORD> keys = getMap();
+        if (auto it = keys.find(key); it != keys.end()) {
+            return it->second;
+        }
+        errorMsg = "Unknown key \"" + key + "\"";
+        return 0;
+    }
+
+    static bool readKey(const std::string key, UINT & mod, UINT & vk, std::string & errorMsg) {
+        Tokenizer t(key, " +");
+        std::vector<std::string> words;
+        while (t.hasNext()) {
+            std::string word = t.next();
+            std::transform(word.begin(), word.end(), word.begin(), ::toupper);
+            words.push_back(word);
+        }
+        size_t idx = 0;
+        mod = readMod(words, idx, errorMsg);
+        if (!errorMsg.empty()) {
+            return false;
+        }
+        vk = readKeyName(words[idx], errorMsg);
+        if (!errorMsg.empty()) {
+            return false;
+        }
+        return true;
+    }
+
 };

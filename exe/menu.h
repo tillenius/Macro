@@ -7,7 +7,6 @@ public:
     HMENU m_hMenu;
 
     ContextMenu();
-    ~ContextMenu();
     void show(HWND hWnd);
     bool handleCommand(WORD id, HINSTANCE hInstance, HWND hWnd);
 };

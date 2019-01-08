@@ -1,4 +1,5 @@
 #include "action.h"
+#include "main.h"
 #include "macro.h"
 #include "systray.h"
 #include "resource.h"
@@ -98,15 +99,6 @@ static HWND getHWnd(const std::string & exeName, const std::string & windowName,
     return accepted[0];
 }
 
-static HWND GetCurrentWindow() {
-    HWND hWnd = GetForegroundWindow();
-
-    while (GetParent(hWnd) != NULL)
-        hWnd = GetParent(hWnd);
-
-    return hWnd;
-}
-
 } // namespace
 
 bool Action::activate(const std::string & exeName, const std::string & windowName, const std::string & className) {
@@ -118,15 +110,15 @@ bool Action::activate(const std::string & exeName, const std::string & windowNam
     return false;
 }
 
-DWORD RunThreadFunc(LPVOID lpv) {
-    PROCESS_INFORMATION * pi = (PROCESS_INFORMATION *) lpv;
-    WaitForSingleObject(pi->hProcess, INFINITE);
-    CloseHandle(pi->hThread);
-    CloseHandle(pi->hProcess);
-    return 0;
-}
+//DWORD RunThreadFunc(LPVOID lpv) {
+//    PROCESS_INFORMATION * pi = (PROCESS_INFORMATION *) lpv;
+//    WaitForSingleObject(pi->hProcess, INFINITE);
+//    CloseHandle(pi->hThread);
+//    CloseHandle(pi->hProcess);
+//    return 0;
+//}
 
-void Action::run(const std::string & appName, const std::string & cmdLine, const std::string & currDir, WORD wShowWindow) {
+void Action::run(const std::string & appName, const std::string & cmdLine, const std::string & currDir) {
     PROCESS_INFORMATION lpProcessInfo{0};
     STARTUPINFO siStartupInfo{0};
     siStartupInfo.cb = sizeof(STARTUPINFO);
@@ -134,8 +126,10 @@ void Action::run(const std::string & appName, const std::string & cmdLine, const
     const char *szCurrDir = currDir.empty() ? NULL : currDir.c_str();
 
     if (CreateProcess(appName.c_str(), (LPSTR) cmdLine.c_str(), NULL, NULL, FALSE, NULL, NULL, szCurrDir, &siStartupInfo, &lpProcessInfo)) {
-        DWORD  g_dwThreadId;
-        CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE) RunThreadFunc, &lpProcessInfo, 0, &g_dwThreadId);
+        CloseHandle(lpProcessInfo.hThread);
+        CloseHandle(lpProcessInfo.hProcess);
+        //DWORD  g_dwThreadId;
+        //CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE) RunThreadFunc, &lpProcessInfo, 0, &g_dwThreadId);
     } else {
         LPVOID lpMsgBuf;
         FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR) &lpMsgBuf, 0, NULL);
@@ -145,60 +139,11 @@ void Action::run(const std::string & appName, const std::string & cmdLine, const
 }
 
 void Action::activateOrRun(const std::string & exeName, const std::string & windowName, const std::string & className,
-                           const std::string & appName, const std::string & cmdLine, const std::string & currDir, WORD wShowWindow) {
+                           const std::string & appName, const std::string & cmdLine, const std::string & currDir) {
     if (activate(exeName, windowName, className)) {
         return;
     }
-    run(appName, cmdLine, currDir, wShowWindow);
-}
-
-void Action::minimize() {
-    HWND hWnd = GetCurrentWindow();
-
-    WINDOWPLACEMENT wp = {0};
-    wp.length = sizeof(WINDOWPLACEMENT);
-
-    GetWindowPlacement(hWnd, &wp);
-    wp.showCmd = SW_MINIMIZE;
-    SetWindowPlacement(hWnd, &wp);
-}
-
-void Action::moveWindow(int deltaX, int deltaY, int deltaCX, int deltaCY) {
-    HWND hWnd = GetCurrentWindow();
-
-    WINDOWPLACEMENT wp = {0};
-    wp.length = sizeof(WINDOWPLACEMENT);
-
-    GetWindowPlacement(hWnd, &wp);
-    if (wp.showCmd != SW_SHOWNORMAL) {
-        return;
-    }
-
-    RECT rect;
-    if (GetWindowRect(hWnd, &rect)) {
-        MoveWindow(hWnd, rect.left + deltaX, rect.top + deltaY, rect.right - rect.left + deltaCX, rect.bottom - rect.top + deltaCY, TRUE);
-    }
-}
-
-void Action::setWindowPos(int x, int y, int cx, int cy) {
-    HWND hWnd = GetCurrentWindow();
-
-    WINDOWPLACEMENT wp = {0};
-    wp.length = sizeof(WINDOWPLACEMENT);
-
-    GetWindowPlacement(hWnd, &wp);
-    if (wp.showCmd != SW_SHOWNORMAL) {
-        return;
-    }
-
-    if (cx != -1) {
-        MoveWindow(hWnd, x, y, cx, cy, TRUE);
-    } else {
-        RECT rect;
-        if (GetWindowRect(hWnd, &rect)) {
-            MoveWindow(hWnd, x, y, rect.right - rect.left, rect.bottom - rect.top, TRUE);
-        }
-    }
+    run(appName, cmdLine, currDir);
 }
 
 void Action::nextWindow() {
@@ -273,16 +218,8 @@ void Action::prevWindow() {
     SendInput(6, lKey, sizeof(INPUT));
 }
 
-void Action::switchWindow(int delta) {
-    if (delta > 0 ) {
-        nextWindow();
-    } else if (delta < 0) {
-        prevWindow();
-    }
-}
-
-void Action::runSaved(const std::string & fileName, Settings & settings) {
-    Macro m(settings);
+void Action::runSaved(const std::string & fileName) {
+    Macro m;
     m.load(fileName.c_str());
-    m.playback();
+    m.playback(g_app->m_settings, m.get());
 }

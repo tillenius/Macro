@@ -7,14 +7,15 @@ Hotkeys::~Hotkeys() {
         disable();
 }
 
-void Hotkeys::enable() {
+void Hotkeys::enable(HWND hWnd) {
+    m_hWnd = hWnd;
     std::string errorMsg;
     for (int i = 0; i < m_hotkeys.size(); i++) {
         if (RegisterHotKey(m_hWnd, i, m_hotkeys[i].fsModifiers, m_hotkeys[i].vk) == FALSE) {
             if (errorMsg.empty()) {
                 errorMsg = "Failed to register the following hotkeys:\n";
             }
-            errorMsg += "Hotkey #" + std::to_string(i) + ": " + Keynames::GetName(m_hotkeys[i].fsModifiers, m_hotkeys[i].vk) + "\n";
+            errorMsg += "Hotkey #" + std::to_string(i) + ": " + Keynames::getName(m_hotkeys[i].fsModifiers, m_hotkeys[i].vk) + "\n";
         }
     }
 

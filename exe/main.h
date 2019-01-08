@@ -36,6 +36,11 @@ public:
     void inactivate();
     void resetCounter();
     void saveMacro();
+    void editConfigFile();
+    bool reload(bool enable);
 };
 
 extern std::unique_ptr<MacroApp> g_app;
+std::string wstr_to_utf8(WCHAR * s);
+std::string wstr_to_utf8(const std::wstring & s);
+bool fileExists(LPCWSTR szPath);

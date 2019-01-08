@@ -12,8 +12,39 @@
 HINSTANCE g_hInstance;
 std::unique_ptr<MacroApp> g_app;
 
+std::string wstr_to_utf8(WCHAR * s) {
+    const int slength = (int) wcslen(s);
+    int len = WideCharToMultiByte(CP_ACP, 0, s, slength, 0, 0, 0, 0);
+    std::vector<char> buf(len);
+    WideCharToMultiByte(CP_ACP, 0, s, slength, &buf[0], len, 0, 0);
+    return std::string(&buf[0]);
+}
+
+std::string wstr_to_utf8(const std::wstring & s) {
+    int slength = (int) s.length() + 1;
+    int len = WideCharToMultiByte(CP_ACP, 0, s.c_str(), slength, 0, 0, 0, 0);
+    std::vector<char> buf(len);
+    WideCharToMultiByte(CP_ACP, 0, s.c_str(), slength, &buf[0], len, 0, 0);
+    return std::string(&buf[0]);
+}
+
+bool fileExists(LPCWSTR szPath) {
+    DWORD dwAttrib = GetFileAttributesW(szPath);
+    return (dwAttrib != INVALID_FILE_ATTRIBUTES &&
+            !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+}
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    static char keyname[80];
     switch (message) {
+        case WM_KEYDOWN:
+            ::GetKeyNameTextA((LONG) lParam, keyname, sizeof(keyname));
+            OutputDebugString((std::string("WM_KEYDOWN ") + std::to_string((int) wParam) + " " + keyname + "\n").c_str());
+            return 0;
+        case WM_KEYUP:
+            ::GetKeyNameTextA((LONG) lParam, keyname, sizeof(keyname));
+            OutputDebugString((std::string("WM_KEYUP ") + std::to_string((int) wParam) + " " + keyname + "\n").c_str());
+            return 0;
         case WM_HOTKEY:
             g_app->hotkey((int) wParam);
             return 0;
@@ -34,9 +65,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                     return 0;
             }
             return 0;
-        case WM_CREATE:
+        case WM_CREATE: {
             g_app = std::make_unique<MacroApp>(g_hInstance, hWnd);
             return 0;
+        }
         case WM_DESTROY:
             PostQuitMessage(0);
             return 0;
@@ -74,7 +106,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return 0;
     }
 
-    HWND hWnd = CreateWindow("keymacro", "keymacro", WS_OVERLAPPEDWINDOW, 0, 0, 0, 0, NULL, NULL, hInstance, NULL);
+    HWND hWnd = CreateWindow("keymacro", "keymacro", WS_OVERLAPPEDWINDOW, 0, 0, 400, 200, NULL, NULL, hInstance, NULL);
     if (hWnd == NULL) {
         MessageBox(0, "CreateWindow failed", 0, MB_OK);
         return 0;
@@ -92,15 +124,74 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     return (int) msg.wParam;
 }
 
-MacroApp::MacroApp(HINSTANCE hInstance, HWND hWnd) : m_hInstance(hInstance), m_hWnd(hWnd), m_systray(hInstance, hWnd), m_hotkeys(hWnd), m_macro(m_settings) {
-    std::string errorMsg;
-    if (!m_settings.readConfig(m_hotkeys, m_midi, errorMsg)) {
-        errorMsg = "Error reading configuration file\n" + errorMsg;
-        MessageBox(0, errorMsg.c_str(), 0, MB_OK);
+struct NotificationThreadData {
+    HANDLE notificationHandle;
+    HWND hwnd;
+};
+
+DWORD WINAPI FileChangeNotificationThread(LPVOID lpParam) {
+    NotificationThreadData * data = (NotificationThreadData *) lpParam;
+    while (WaitForSingleObject(data->notificationHandle, INFINITE) == WAIT_OBJECT_0) {
+        // reset
+        if (FindNextChangeNotification(data->notificationHandle) == FALSE) {
+            return 0;
+        }
+        // keep eating notifications until a short timeout times out
+        for (DWORD ret = WAIT_OBJECT_0; ret == WAIT_OBJECT_0 || ret == WAIT_TIMEOUT; ret = WaitForSingleObject(data->notificationHandle, 500)) {
+            if (ret == WAIT_TIMEOUT) {
+                break;
+            }
+            if (FindNextChangeNotification(data->notificationHandle) == FALSE) {
+                return 0;
+            }
+        }
+        PostMessage(data->hwnd, WM_USER_RELOAD, 0, 0);
+    }
+    return 0;
+}
+
+MacroApp::MacroApp(HINSTANCE hInstance, HWND hWnd) : m_hInstance(hInstance), m_hWnd(hWnd), m_systray(hInstance, hWnd) {
+    if (!reload(true)) {
+        m_systray.Icon(IDI_ICON1);
+    }
+}
+
+bool MacroApp::reload(bool enable) {
+    SettingsFile newSettings;
+    if (!newSettings.load()) {
+        return false;
     }
 
-    m_hotkeys.enable();
-    m_systray.Icon(IDI_ICON1);
+    // stop recording if currently so
+    if (m_bRecord) {
+        m_bRecord = false;
+        Unhook();
+        m_macro.clear();
+    }
+
+    // disable hotkeys
+    if (m_hotkeys.m_enabled) {
+        m_hotkeys.disable();
+    }
+
+    // copy new settings over
+    std::swap(newSettings.m_settings, m_settings);
+    std::swap(newSettings.m_hotkeys, m_hotkeys);
+
+    // enable new hotkeys
+    if (enable) {
+        m_hotkeys.enable(m_hWnd);
+        m_systray.Icon(IDI_ICON1);
+    } else {
+        m_systray.Icon(IDI_ICON4);
+    }
+
+    // enable new midi config
+    m_midi.init(m_settings.m_midiInterface);
+    m_midi.sendMessage(newSettings.m_bclMessage);
+    m_midi.setChannelMap(newSettings.m_channelMap);
+
+    return true;
 }
 
 MacroApp::~MacroApp() {
@@ -123,7 +214,7 @@ void MacroApp::record() {
 
 void MacroApp::playback() {
     if (!m_bRecord)
-        m_macro.playback();
+        m_macro.playback(m_settings, m_macro.get());
 }
 
 void MacroApp::key(WPARAM wParam, LPARAM lParam) {
@@ -131,14 +222,14 @@ void MacroApp::key(WPARAM wParam, LPARAM lParam) {
         m_systray.Icon(IDI_ICON3);
     else
         m_systray.Icon(IDI_ICON2);
-    m_macro.gotKey(wParam, (DWORD) lParam);
+    m_macro.gotKey(m_settings, wParam, (DWORD) lParam);
 }
 
 void MacroApp::inactivate() {
     m_bActive = !m_bActive;
     if (m_bActive) {
         m_systray.Icon(IDI_ICON1);
-        m_hotkeys.enable();
+        m_hotkeys.enable(m_hWnd);
     } else {
         if (m_bRecord) {
             m_systray.Icon(IDI_ICON1);
@@ -173,4 +264,18 @@ void MacroApp::saveMacro() {
 
     if (GetSaveFileName(&ofn))
         m_macro.save(ofn.lpstrFile);
+}
+
+void MacroApp::editConfigFile() {
+    const std::string file = wstr_to_utf8(m_settings.m_settingsFile);
+
+    PROCESS_INFORMATION lpProcessInfo{0};
+    STARTUPINFO siStartupInfo{0};
+    siStartupInfo.cb = sizeof(STARTUPINFO);
+    const std::string editor = "C:\\Program Files\\Sublime Text 3\\sublime_text.exe"; // @TODO
+    if (CreateProcess(editor.c_str(),
+        (LPSTR) (std::string("\"") + editor + "\" \"" + file + "\"").c_str(), NULL, NULL, FALSE, NULL, NULL, NULL, &siStartupInfo, &lpProcessInfo)) {
+        CloseHandle(lpProcessInfo.hThread);
+        CloseHandle(lpProcessInfo.hProcess);
+    }
 }

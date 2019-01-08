@@ -17,18 +17,24 @@ private:
     };
 
     std::vector<Entry> m_hotkeys;
-    HWND m_hWnd;
-    bool m_enabled = false;
+    HWND m_hWnd = NULL;
 
 public:
-    Hotkeys(HWND hWnd) : m_hWnd(hWnd) {}
+    bool m_enabled = false;
+
     ~Hotkeys();
 
     void add(UINT fsModifiers, UINT vk, std::function<void()> fn) {
         m_hotkeys.push_back(Entry(fsModifiers, vk, fn));
     }
 
-    void enable();
+    void enable(HWND hWnd);
     void disable();
-    void execute(int ID) { m_hotkeys[ID].fn(); }
+    void execute(int ID) {
+        try {
+            m_hotkeys[ID].fn();
+        } catch (const std::exception & ex) {
+            MessageBox(0, ex.what(), 0, MB_OK);
+        }
+    }
 };

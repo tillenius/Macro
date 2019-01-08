@@ -1,293 +1,612 @@
 #include "settings.h"
 #include "main.h"
 #include "hotkeys.h"
-#include "util/tokenizer.h"
 #include "keynames.h"
 #include "action.h"
+#include "popupmenu.h"
+#include "popuplist.h"
+#include "resource.h"
 #include <iostream>
 #include <fstream>
-#include <string>
 #include <map>
 #include <sstream>
 #include <vector>
-#include <Windows.h>
+#include <type_traits>
+#include <algorithm>
+#include <unordered_map>
+#include <shlobj.h>
+#include <windows.h>
+#include <tlhelp32.h>
+#include "pybind11/embed.h"
+#include "pybind11/stl.h"
+
+namespace py = pybind11;
 
 namespace {
 
-static DWORD readMod(std::vector<std::string> words, size_t & i, std::string & errorMsg) {
-    DWORD modifier = 0;
+static constexpr int MAX_CONTROLLERS = 127;
 
-    for (; i < words.size(); i++) {
-        const int mod = Keynames::GetModValue(words[i]);
-        if (mod != 0) {
-            if ((modifier & mod) != 0) {
-                errorMsg = "Modifier " + words[i] + " repeated";
-                return 0xFFFFFFFF;
-            }
-            modifier |= mod;
-        } else {
-            return modifier;
-        }
-    }
-    return modifier;
-}
-
-static DWORD readKeyName(const std::string & key, std::string & errorMsg) {
-
-    // hex
-    if (key.size() > 2 && key[0] == '#')
-        return strtoul(key.c_str() + 1, 0, 16);
-
-    // name
-    std::unordered_map<std::string, DWORD> keys = Keynames::GetMap();
-    if (auto it = keys.find(key); it != keys.end()) {
-        return it->second;
-    }
-    errorMsg = "Unknown key \"" + key + "\"";
-    return 0xffffffff;
-}
-
-static bool readKey(std::vector<std::string> words, size_t &idx, UINT &mod, UINT &vk, std::string & errorMsg) {
-    if (!(idx < words.size())) {
-        errorMsg = "Key not specified";
+template<typename T>
+bool parseConfig(py::dict & config, const char * name, T & out) {
+    if (!config.contains(name))
         return false;
-    }
-    mod = readMod(words, idx, errorMsg);
-    if (mod == 0xffffffff) {
-        return false;
-    }
-    vk = readKeyName(words[idx++], errorMsg);
-    if (vk == 0xffffffff) {
-        return false;
+    try {
+        out = py::cast<std::remove_reference_t<decltype(out)>>(config[name]);
+    } catch (const py::cast_error &) {
+        throw std::runtime_error(std::string("config[\"") + name + std::string("\"] is of wrong type."));
     }
     return true;
 }
 
+bool parseKeyConfig(py::dict & config, const char * name, UINT & out) {
+    std::string key;
+    if (parseConfig(config, name, key)) {
+        std::transform(key.begin(), key.end(), key.begin(), ::toupper);
+        if (auto it = Keynames::getMap().find(key); it != Keynames::getMap().end()) {
+            out = it->second;
+            return true;
+        }
+        throw std::runtime_error(std::string("Unknown key \"") + key + "\" in config[\"" + name + "\"].");
+    }
+    return false;
+}
+
+static BOOL CALLBACK EnumChildWindowsCallback(HWND hwnd, LPARAM lParam) {
+    std::vector<HWND> & result = *(std::vector<HWND> *) lParam;
+    result.push_back(hwnd);
+    return TRUE;
+}
+
+static BOOL CALLBACK EnumThreadWindowsCallback(HWND hwnd, LPARAM lParam) {
+    std::vector<HWND> & result = *(std::vector<HWND> *) lParam;
+    result.push_back(hwnd);
+    return TRUE;
+}
+
+static BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam) {
+    std::vector<HWND> & result = *(std::vector<HWND> *) lParam;
+    result.push_back(hwnd);
+    return TRUE;
+}
+
+static std::tuple<int, int, int, int> makeTuple(RECT & rect) {
+    return std::tuple<int, int, int, int>(rect.left, rect.top, rect.right, rect.right);
+}
+
+static std::tuple<int, int> makeTuple(POINT & point) {
+    return std::tuple<int, int>(point.x, point.y);
+}
+
 } // namespace
 
-bool Settings::readConfig(Hotkeys & hotkeys, Midi & midi, std::string & errorMsg) {
+py::handle pyHWND(HWND hwnd) {
+    static PyObject * ctypes_mod = PyImport_ImportModule("ctypes");
+    static PyObject * wintypes = PyObject_GetAttrString(ctypes_mod, "wintypes");
+    static PyObject * pyHWND = PyObject_GetAttrString(wintypes, "HWND");
+    PyObject * p = PyObject_CallFunction(pyHWND, "O", PyLong_FromVoidPtr((void*) hwnd));
+    return py::handle(p);
+}
 
-    std::ifstream prefs;
+ HWND pyHWND(py::object o) {
+     HWND hwnd = NULL;
+     PyObject * obj = o.ptr();
+     PyObject * value = PyObject_GetAttr(obj, PyUnicode_FromString("value"));
+     PyObject * tmp = PyNumber_Long(value);
+     Py_DECREF(value);
+     if (tmp) {
+         hwnd = (HWND) PyLong_AsVoidPtr(tmp);
+         Py_DECREF(tmp);
+     }
+     return hwnd;
+ }
 
-    prefs.open("macro.cfg");
-    if (!prefs.is_open()) {
-        errorMsg = "Cannot open file \"macro.cfg\" for reading.";
+char buffer[4096];
+
+PYBIND11_EMBEDDED_MODULE(macro, m) {
+
+    // Enumerate things
+
+    m.def("get_threadprocids", []() {
+        std::vector<std::tuple<DWORD, DWORD>> threadprocids;
+
+        HANDLE hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if (hThreadSnap == INVALID_HANDLE_VALUE)
+            return threadprocids;
+
+        THREADENTRY32 te32;
+        ::ZeroMemory(&te32, sizeof(te32));
+        te32.dwSize = sizeof(THREADENTRY32);
+        if (!Thread32First(hThreadSnap, &te32)) {
+            CloseHandle(hThreadSnap);
+            return threadprocids;
+        }
+        do {
+            threadprocids.push_back(std::tuple<DWORD, DWORD>(te32.th32ThreadID, te32.th32OwnerProcessID));
+        } while (Thread32Next(hThreadSnap, &te32) == TRUE);
+        CloseHandle(hThreadSnap);
+        return threadprocids;
+    });
+
+    m.def("get_threadids", [](DWORD procId) {
+        std::vector<DWORD> threadids;
+
+        HANDLE hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if (hThreadSnap == INVALID_HANDLE_VALUE)
+            return threadids;
+
+        THREADENTRY32 te32;
+        ::ZeroMemory(&te32, sizeof(te32));
+        te32.dwSize = sizeof(THREADENTRY32);
+        if (!Thread32First(hThreadSnap, &te32)) {
+            CloseHandle(hThreadSnap);
+            return threadids;
+        }
+        do {
+            if (te32.th32OwnerProcessID == procId) {
+                threadids.push_back(te32.th32ThreadID);
+            }
+        } while (Thread32Next(hThreadSnap, &te32) == TRUE);
+        CloseHandle(hThreadSnap);
+        return threadids;
+    });
+
+    m.def("get_processes", []() {
+        std::vector<py::dict> processes;
+
+        HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (hProcessSnap == INVALID_HANDLE_VALUE)
+            return processes;
+
+        PROCESSENTRY32 pe32;
+        ::ZeroMemory(&pe32, sizeof(PROCESSENTRY32));
+        pe32.dwSize = sizeof(PROCESSENTRY32);
+        if (!Process32First(hProcessSnap, &pe32)) {
+            CloseHandle(hProcessSnap);
+            return processes;
+        }
+        do {
+            py::dict proc;
+            proc["th32ProcessID"] = pe32.th32ProcessID;
+            proc["cntThreads"] = pe32.cntThreads;
+            proc["th32ParentProcessID"] = pe32.th32ParentProcessID;
+            proc["szExeFile"] = std::string(pe32.szExeFile);
+            processes.push_back(proc);
+        } while (Process32Next(hProcessSnap, &pe32) == TRUE);
+        CloseHandle(hProcessSnap);
+        return processes;
+    });
+
+    m.def("get_modules", []() {
+        std::vector<py::dict> modules;
+
+        HANDLE hModuleSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
+        if (hModuleSnap == INVALID_HANDLE_VALUE)
+            return modules;
+
+        MODULEENTRY32 me32;
+        ::ZeroMemory(&me32, sizeof(MODULEENTRY32));
+        me32.dwSize = sizeof(MODULEENTRY32);
+        if (!Module32First(hModuleSnap, &me32)) {
+            CloseHandle(hModuleSnap);
+            return modules;
+        }
+        do {
+            py::dict proc;
+            proc["th32ProcessID"] = me32.th32ProcessID;
+            proc["modBaseAddr"] = me32.modBaseAddr;
+            proc["modBaseSize"] = me32.modBaseSize;
+            proc["hModule"] = (void *) me32.hModule;
+            proc["szModule"] = std::string(me32.szModule);
+            proc["szExePath"] = std::string(me32.szExePath);
+            modules.push_back(proc);
+        } while (Module32Next(hModuleSnap, &me32) == TRUE);
+        CloseHandle(hModuleSnap);
+        return modules;
+    });
+
+    m.def("get_windows", []() {
+        std::vector<HWND> windows;
+        for (HWND hwnd = ::GetTopWindow(0); hwnd != NULL; hwnd = ::GetNextWindow(hwnd, GW_HWNDNEXT)) {
+            windows.push_back(hwnd);
+        }
+        return windows;
+    });
+
+    m.def("enum_child_windows", [](py::object hwnd_) {
+        HWND hwnd = pyHWND(hwnd_);
+        std::vector<HWND> result;
+        EnumChildWindows(hwnd, EnumChildWindowsCallback, (LPARAM) &result);
+        return result;
+    });
+
+    m.def("enum_thread_windows", [](DWORD threadId) {
+        std::vector<HWND> result;
+        EnumThreadWindows(threadId, EnumThreadWindowsCallback, (LPARAM) &result);
+        return result;
+    });
+
+    m.def("enum_windows", [](DWORD threadId) {
+        std::vector<HWND> result;
+        ::EnumWindows(EnumWindowsCallback, (LPARAM) &result);
+        return result;
+    });
+
+    // Clipboard
+
+    m.def("empty_clipboard", []() {
+        if (::OpenClipboard(g_app->m_hWnd) == 0) {
+            return false;
+        }
+        bool ret = ::EmptyClipboard() != 0;
+        ::CloseClipboard();
+        return ret;
+    });
+
+    m.def("is_clipboard_format_available", [](UINT format) {
+        return ::IsClipboardFormatAvailable(format) != 0;
+    });
+
+    m.def("get_clipboard_text", []() {
+        std::string ret;
+        if (::OpenClipboard(g_app->m_hWnd) == 0) {
+            return ret;
+        }
+        HANDLE h = ::GetClipboardData(CF_TEXT); // @TODO: CF_UNICODETEXT?
+        if (h != NULL) {
+            char * data = (char *) ::GlobalLock(h);
+            if (data != NULL) {
+                strcpy_s(buffer, data);
+                ret = std::string(buffer);
+                ::GlobalUnlock(h);
+            }
+        }
+        ::CloseClipboard();
+        return ret;
+    });
+
+    m.def("set_clipboard_text", [](const std::string & text) {
+        if (::OpenClipboard(g_app->m_hWnd) == 0) {
+            return false;
+        }
+        ::EmptyClipboard();
+
+        HGLOBAL hglbCopy = GlobalAlloc(GMEM_MOVEABLE, text.length() + 1);
+        if (hglbCopy != NULL) {
+            char * buffer = (char *) GlobalLock(hglbCopy);
+            memcpy(buffer, text.c_str(), text.length());
+            buffer[text.length()] = 0;
+            GlobalUnlock(hglbCopy);
+
+            ::SetClipboardData(CF_TEXT, hglbCopy); // @TODO: CF_UNICODETEXT?
+        }
+        ::CloseClipboard();
+        return true;
+    });
+
+    // Macro
+
+    m.def("play", [](const std::vector<DWORD> & macro) {
+        Macro::playback(g_app->m_settings, macro);
+    });
+
+    m.def("get_macro_as_python", []() {
+        const std::vector<DWORD> & macro = g_app->m_macro.get();
+        if (macro.empty()) {
+            return std::string();
+        }
+        std::string ret = "macro.play([\n";
+        for (int i = 0; i < macro.size(); ++i) {
+            int scancode = (WORD) (((macro[i]) >> 16) & 0xff);
+            bool up = (macro[i] & 0x80000000) != 0;
+            char buffer[30];
+            sprintf_s(buffer, "    0x%08x", macro[i]);
+            ret += buffer;
+            ::GetKeyNameTextA((LONG) macro[i], buffer, sizeof(buffer));
+            ret += " # ";
+            ret += buffer;
+            ret += up ? "up\n" : "\n";
+        }
+        ret += "]);";
+        return ret;
+    });
+
+    // Activate and run programs
+
+    m.def("activate", [](const std::string & exeName, const std::string & windowName, const std::string & className) {
+        Action::activate(exeName, windowName, className);
+    });
+
+    m.def("run", [](const std::string & appName, const std::string & cmdLine, const std::string & currDir) {
+        Action::run(appName, cmdLine, currDir);
+    });
+
+    m.def("activate_or_run", [](const std::string & exeName, const std::string & windowName, const std::string & className,
+                                const std::string & appName, const std::string & cmdLine, const std::string & currDir) {
+        Action::activateOrRun(exeName, windowName, className, appName, cmdLine, currDir);
+    });
+
+    // GUI
+
+    m.def("menu", [](const std::vector<std::string> & items) -> int {
+        return PopupMenu::exec(items);
+    });
+    m.def("list", [](const std::vector<std::string> & items) -> int {
+        return PopupList::exec(items);
+    });
+    m.def("notify", [](const std::string & message) {
+        return g_app->m_systray.Notification(message.c_str());
+    });
+
+    // Build-in windows management
+
+    m.def("get_current_window", []() {
+        return pyHWND(::GetAncestor(::GetForegroundWindow(), GA_ROOT));
+    });
+
+    m.def("is_main_window", [](py::object hwnd_) {
+        HWND hwnd = pyHWND(hwnd_);
+        return (GetWindowLong(hwnd, GWL_STYLE) & WS_VISIBLE) != 0;
+    });
+
+    m.def("get_class_name", [](py::object hwnd_) {
+        HWND hwnd = pyHWND(hwnd_);
+        if (::GetClassName(hwnd, buffer, sizeof(buffer)) == 0) {
+            return std::string();
+        }
+        return std::string(&buffer[0]);
+    });
+
+    m.def("get_window_text", [](py::object hwnd_) {
+        HWND hwnd = pyHWND(hwnd_);
+        int len = (int) ::SendMessage(hwnd, WM_GETTEXTLENGTH, 0, 0);
+        std::vector<char> buffer(len + 2);
+        ::SendMessage(hwnd, WM_GETTEXT, (WPARAM) (len + 1), (LPARAM) &buffer[0]);
+        return std::string(&buffer[0]);
+    }, py::arg("hwnd").noconvert());
+
+    m.def("set_window_text", [](py::object hwnd_, const std::string & s) {
+        HWND hwnd = pyHWND(hwnd_);
+        ::SendMessage(hwnd, WM_SETTEXT, 0, (LPARAM) s.c_str());
+    });
+
+    m.def("get_window_title", [](py::object hwnd_) {
+        HWND hwnd = pyHWND(hwnd_);
+        int len = ::GetWindowTextLength(hwnd);
+        std::vector<char> buffer(len + 2);
+        ::GetWindowText(hwnd, &buffer[0], len + 1);
+        return std::string(&buffer[0]);
+    });
+    m.def("set_window_title", [](py::object hwnd_, const std::string & s) {
+        HWND hwnd = pyHWND(hwnd_);
+        ::SetWindowText(hwnd, s.c_str());
+    });
+
+    m.def("get_window_module_filename", [](py::object hwnd_) {
+        HWND hwnd = pyHWND(hwnd_);
+        if (::GetWindowModuleFileNameA(hwnd, buffer, sizeof(buffer)) == 0) {
+            return std::string();
+        }
+        return std::string(&buffer[0]);
+    });
+
+    m.def("next_window", []() {
+        Action::nextWindow();
+    });
+
+    m.def("prev_window", []() {
+        Action::prevWindow();
+    });
+
+    m.def("set_window_pos", [](py::object hwnd_, int x, int y) {
+        HWND hwnd = pyHWND(hwnd_);
+        WINDOWPLACEMENT wp = {0};
+        wp.length = sizeof(WINDOWPLACEMENT);
+
+        GetWindowPlacement(hwnd, &wp);
+        if (wp.showCmd != SW_SHOWNORMAL) {
+            return;
+        }
+
+        RECT rect;
+        if (GetWindowRect(hwnd, &rect)) {
+            MoveWindow(hwnd, x, y, rect.right - rect.left, rect.bottom - rect.top, TRUE);
+        }
+    });
+
+    m.def("set_window_pos", [](py::object hwnd_, int x, int y, int cx, int cy) {
+        HWND hwnd = pyHWND(hwnd_);
+        WINDOWPLACEMENT wp = {0};
+        wp.length = sizeof(WINDOWPLACEMENT);
+
+        GetWindowPlacement(hwnd, &wp);
+        if (wp.showCmd != SW_SHOWNORMAL) {
+            return;
+        }
+
+        MoveWindow(hwnd, x, y, cx, cy, TRUE);
+    });
+
+    // Processes
+
+    m.def("terminate_process", [](DWORD processId) {
+        HANDLE hProcess = ::OpenProcess(PROCESS_TERMINATE, 0, processId);
+        if (hProcess == NULL) {
+            return false;
+        }
+        ::TerminateProcess(hProcess, 0);
+        ::CloseHandle(hProcess);
+        return true;
+    });
+
+    // DEBUG 
+
+    m.def("show_debug", [](bool show) {
+        ::ShowWindow(g_app->m_hWnd, show ? SW_SHOWNORMAL : SW_HIDE);
+    });
+    m.def("midi_debug", [](bool state) {
+        g_app->m_midi.m_debug = state;
+    });
+}
+
+void SettingsFile::setupMidiButton(BCLMessage & m, int button, int channel, int controller, const py::dict & config) {
+    // @TODO
+    m((std::string("$button ") + std::to_string(button)).c_str());
+    m("  .showvalue on");
+    m((std::string("  .easypar CC ") + std::to_string(channel) + " " + std::to_string(controller) + " 0 1 toggleon").c_str());
+    m("  .mode down");
+}
+
+void SettingsFile::setupMidiEncoder(BCLMessage & m, int encoder, int channel, int controller, const py::dict & config) {
+    if (py::cast<std::string>(config["type"]) == "relative") {
+        std::string resolution;
+        if (config.contains("resolution")) {
+            resolution = py::cast<std::string>(config["resolution"]);
+        } else {
+            resolution = "96 192 768 2304";
+        }
+        // @TODO
+        m((std::string("$encoder ") + std::to_string(encoder)).c_str());
+        m("  .showvalue off");
+        m((std::string("  .easypar CC ") + std::to_string(channel) + " " + std::to_string(controller) + " 0 127 relative-2").c_str());
+        m((std::string("  .resolution ") + resolution).c_str());
+        m("  .mode 1dot/off");
+    }
+}
+
+bool SettingsFile::load() {
+    // Create an interpreter on first use. Make sure its kept alive until termination.
+    // Delete the old interpreter and create a new one on re-init, to avoid caching.
+    static std::unique_ptr<py::scoped_interpreter> interp;
+    interp.reset();
+    interp = std::make_unique<py::scoped_interpreter>();
+    py::module::import("sys").attr("dont_write_bytecode") = true;
+
+    py::dict global = py::dict();
+    py::dict local = py::dict();
+
+    m_bclMessage("$rev R1");
+    m_bclMessage("$preset");
+
+    struct controllerUsage {
+        std::vector<bool> used;
+        int nextFree = 1;
+    };
+    std::unordered_map<int, controllerUsage> usedControllers;
+
+    auto nextController = [&usedControllers](int channel) -> int {
+        controllerUsage & cu = usedControllers[channel];
+        std::vector<bool> & used = cu.used;
+        if (used.empty()) {
+            used.resize(MAX_CONTROLLERS);
+        }
+        for (int & nextFree = cu.nextFree; nextFree < used.size(); ++nextFree) {
+            if (!used[nextFree]) {
+                used[nextFree] = true;
+                return nextFree++;
+            }
+        }
+        throw std::exception((std::string("Too many midi actions in channel ") + std::to_string(channel) + ".").c_str());
+    };
+
+    WCHAR * filepath;
+    if (!SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, NULL, &filepath))) {
+        MessageBox(0, "SHGetKnownFolderPath() failed.", 0, MB_OK);
         return false;
     }
 
-    std::string line;
-    int lineCount = 0;
-
-    while (!prefs.eof()) {
-        std::getline(prefs, line);
-        ++lineCount;
-        Tokenizer t(line, " ,()\t\n\r");
-        std::vector<std::string> words;
-        while (t.hasNext())
-            words.push_back(t.next());
-
-        if (words.size() < 1)
-            continue;
-
-        size_t z = 1;
-
-        const int NONE = 0;
-        const int KEY = 1;
-        const int MIDI = 2;
-        struct { const char * name; int numArgs; int input; } table[] = {
-            {"COUNTER_DIGITS", 1, NONE},
-            {"COUNTER_START", 1, NONE},
-            {"COUNTER_HEX", 1, NONE},
-            {"MIDIINTERFACE", -1, NONE},
-            {"MIDIBUTTON", 3, NONE},
-            {"MIDIRELENC", -1, NONE},
-            {"RECBUTTON", 0, KEY | MIDI},
-            {"PLAYBUTTON", 0, KEY | MIDI},
-            {"MINIMIZE", 0, KEY | MIDI},
-            {"NEXTWINDOW", 0, KEY | MIDI},
-            {"PREVWINDOW", 0, KEY | MIDI},
-            {"PROGRAM", 3, KEY | MIDI},
-            {"ACTIVATE", 3, KEY | MIDI},
-            {"RUNORACTIVATE", 6, KEY | MIDI},
-            {"FILE", 1, KEY | MIDI},
-            {"MOVEWINDOW", -1, KEY | MIDI},
-            {"MOVEWINDOWX", 0, MIDI},
-            {"MOVEWINDOWY", 0, MIDI},
-            {"RESIZEWINDOWX", 0, MIDI},
-            {"RESIZEWINDOWY", 0, MIDI},
-            {"SWITCHWINDOW", 0, MIDI},
-        };
-
-        int index = -1;
-        for (int i = 0; i < sizeof(table) / sizeof(table[0]); ++i) {
-            if (words[0] == table[i].name) {
-                index = i;
-                break;
-            }
-        }
-        
-        if (index == -1) {
-            errorMsg = "Line " + std::to_string(lineCount) + ": Unknown command " + words[0] + ".";
-            return false;
-        }
-
-        std::string msg;
-        UINT mod;
-        UINT key;
-        int midiChannel = -1;
-        int midiController = -1;
-
-        if ((table[index].input & MIDI) != 0) {
-            if (words.size() > z + 2 && words[z] == "MIDI") {
-                ++z;
-                midiChannel = std::stoi(words[z++]);
-                midiController = std::stoi(words[z++]);
-            } else if (table[index].input == MIDI) {
-                errorMsg = "Line " + std::to_string(lineCount) + ": invalid midi config for command " + words[0] + ".";
-            }
-        }
-        if (midiChannel == -1 && (table[index].input & KEY) != 0) {
-            if (!readKey(words, z, mod, key, msg)) {
-                errorMsg = "Line " + std::to_string(lineCount) + ": " + msg + " for command " + words[0] + ".";
-                return false;
-            }
-        }
-
-        if (words.size() != z + table[index].numArgs && table[index].numArgs != -1) {
-            errorMsg = "Line " + std::to_string(lineCount) + ": Wrong number of arguments for command " + words[0] + ".";
-            return false;
-        }
-
-        if (words[0] == "COUNTER_DIGITS") {
-            DWORD num = atoi(words[1].c_str());
-            if (num != 0 && num < 10)
-                m_counterDigits = num;
-            else {
-                errorMsg = "Line " + std::to_string(lineCount) + ": COUNTER_DIGITS must be between 1 and 9.";
-                return false;
-            }
-        } else if (words[0] == "COUNTER_START") {
-            m_counter = atoi(words[1].c_str());
-        } else if (words[0] == "COUNTER_HEX") {
-            if (words[1] == "ON")
-                m_counterHex = true;
-            else if (words[1] == "OFF")
-                m_counterHex = false;
-        } else if (words[0] == "RECBUTTON") {
-            m_recbutton = key;
-        } else if (words[0] == "PLAYBUTTON") {
-            m_playbutton = key;
-        } else if (words[0] == "MIDIINTERFACE") {
-            if (words.size() > 1) {
-                midi.init(words[1]);
-            } else {
-                midi.init("");
-            }
-        } else if (words[0] == "MIDIBUTTON") {
-            const int button = std::stoi(words[1]);
-            const int channel = std::stoi(words[2]);
-            const int controller = std::stoi(words[3]);
-            midi.addButton(button, channel, controller);
-        } else if (words[0] == "MIDIRELENC") {
-            if (3 < words.size()) {
-                const int encoder = std::stoi(words[1]);
-                const int channel = std::stoi(words[2]);
-                const int controller = std::stoi(words[3]);
-                if (4 < words.size()) {
-                    midi.addRelativeEncoder(encoder, channel, controller, words[4]);
-                } else {
-                    midi.addRelativeEncoder(encoder, channel, controller, "");
-                }
-            }
-        } else if (words[0] == "MINIMIZE") {
-            if (midiChannel != -1) {
-                midi.add(midiChannel, midiController, [](int data) { Action::minimize(); });
-            } else {
-                hotkeys.add(mod, key, []() { Action::minimize(); });
-            }
-        } else if (words[0] == "NEXTWINDOW") {
-            if (midiChannel != -1) {
-                midi.add(midiChannel, midiController, [](int data) { Action::nextWindow(); });
-            } else {
-                hotkeys.add(mod, key, []() { Action::nextWindow(); });
-            }
-        } else if (words[0] == "PREVWINDOW") {
-            if (midiChannel != -1) {
-                midi.add(midiChannel, midiController, [](int data) { Action::prevWindow(); });
-            } else {
-                hotkeys.add(mod, key, []() { Action::prevWindow(); });
-            }
-        } else if (words[0] == "MOVEWINDOW") {
-            if (z + 2 <= words.size()) {
-                const int x = atoi(words[z++].c_str());
-                const int y = atoi(words[z++].c_str());
-                int cx = -1;
-                int cy = -1;
-                if (z + 2 <= words.size()) {
-                    cx = atoi(words[z++].c_str());
-                    cy = atoi(words[z++].c_str());
-                }
-                if (midiChannel != -1) {
-                    midi.add(midiChannel, midiController, [x,y,cx,cy](int data) { Action::setWindowPos(x, y, cx, cy); });
-                } else {
-                    hotkeys.add(mod, key, [x,y,cx,cy]() { Action::setWindowPos(x, y, cx, cy); });
-                }
-            }
-        } else if (words[0] == "MOVEWINDOWX") {
-            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(data - 64, 0, 0, 0); });
-        } else if (words[0] == "MOVEWINDOWY") {
-            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(0, data - 64, 0, 0); });
-        } else if (words[0] == "RESIZEWINDOWX") {
-            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(0, 0, data - 64, 0); });
-        } else if (words[0] == "RESIZEWINDOWY") {
-            midi.add(midiChannel, midiController, [](int data) { Action::moveWindow(0, 0, 0, data - 64); });
-        } else if (words[0] == "SWITCHWINDOW") {
-            midi.add(midiChannel, midiController, [](int data) { Action::switchWindow(data - 64); });
-        } else if (words[0] == "PROGRAM") {
-            const std::string & appName = words[z++];
-            const std::string & cmdLine = words[z++];
-            const std::string & currDir = words[z++];
-            if (midiChannel != -1) {
-                midi.add(midiChannel, midiController, [appName, cmdLine, currDir](int data) { Action::run(appName, cmdLine, currDir, SW_SHOW); });
-            } else {
-                hotkeys.add(mod, key, [appName, cmdLine, currDir]() { Action::run(appName, cmdLine, currDir, SW_SHOW); });
-            }
-        } else if (words[0] == "ACTIVATE") {
-            const std::string & exeName = words[z++];
-            const std::string & windowName = words[z++];
-            const std::string & className = words[z++];
-            if (midiChannel != -1) {
-                midi.add(midiChannel, midiController, [exeName, windowName, className](int data) { Action::activate(exeName, windowName, className); });
-            } else {
-                hotkeys.add(mod, key, [exeName, windowName, className]() { Action::activate(exeName, windowName, className); });
-            }
-        } else if (words[0] == "RUNORACTIVATE") {
-            const std::string & appName = words[z++];
-            const std::string & cmdLine = words[z++];
-            const std::string & currDir = words[z++];
-            const std::string & exeName = words[z++];
-            const std::string & windowName = words[z++];
-            const std::string & className = words[z++];
-            if (midiChannel != -1) {
-                midi.add(midiChannel, midiController, [appName, cmdLine, currDir, exeName, windowName, className](int data) { Action::activateOrRun(exeName, windowName, className, appName, cmdLine, currDir, SW_SHOW); });
-            } else {
-                hotkeys.add(mod, key, [appName, cmdLine, currDir, exeName, windowName, className]() { Action::activateOrRun(exeName, windowName, className, appName, cmdLine, currDir, SW_SHOW); });
-            }
-        } else if (words[0] == "FILE") {
-            const std::string & fileName = words[z++];
-            if (midiChannel != -1) {
-                midi.add(midiChannel, midiController, [fileName, this](int data) { Action::runSaved(fileName, *this); });
-            } else {
-                hotkeys.add(mod, key, [fileName, this]() { Action::runSaved(fileName, *this); });
-            }
-        } else {
-            errorMsg = "Line " + std::to_string(lineCount) + ": Unknown command " + words[0];
-            return false;
-        }
+    std::wstring settingsPath(filepath);
+    settingsPath += L"\\Macro";
+    CreateDirectoryW(settingsPath.c_str(), NULL);
+    py::module::import("sys").attr("path").cast<py::list>().append(wstr_to_utf8(settingsPath).c_str());
+    m_settings.m_settingsFile = settingsPath + L"\\macro-settings.py";
+ 
+    if (!fileExists(m_settings.m_settingsFile.c_str())) {
+        std::ofstream out(m_settings.m_settingsFile.c_str());
+        extern const char * DEFAULT_CONFIG_FILE;
+        out << DEFAULT_CONFIG_FILE;
+        out.close();
     }
 
-    hotkeys.add(0, m_recbutton, []() { g_app->record(); });
-    hotkeys.add(0, m_playbutton, []() { g_app->playback(); });
+    try {
+        py::module settings = py::module::import("macro-settings");
+
+        if (py::hasattr(settings, "config")) {
+            py::dict config = py::cast<py::dict>(settings.attr("config"));
+            parseConfig(config, "counter_digits", m_settings.m_counterDigits);
+            parseConfig(config, "counter_hex", m_settings.m_counterHex);
+            parseConfig(config, "conter_start", m_settings.m_counter);
+            parseConfig(config, "midiinterface", m_settings.m_midiInterface);
+            parseConfig(config, "midichannel", m_settings.m_midiChannel);
+            parseKeyConfig(config, "rec", m_settings.m_recbutton);
+            parseKeyConfig(config, "play", m_settings.m_playbutton);
+        }
+
+        if (py::hasattr(settings, "bcl_setup")) {
+            py::list items = py::cast<py::list>(settings.attr("bcl_setup"));
+            for (auto item : items) {
+                py::tuple t = py::cast<py::tuple>(item);
+                std::string type = py::cast<std::string>(t[0]);
+                const int encoder = py::cast<int>(t[1]);
+                py::dict config = py::cast<py::dict>(t[2]);
+                const int channel = config.contains("channel") ? py::cast<int>(config["channel"]) : m_settings.m_midiChannel;
+                const int controller = py::cast<int>(config["controller"]);
+                std::vector<bool> & used = usedControllers[channel].used;
+                if (used.empty()) {
+                    used.resize(MAX_CONTROLLERS);
+                }
+                if (used[controller]) {
+                    throw std::exception((std::string("Controller ") + std::to_string(controller) + " already used in channel " + std::to_string(channel) + ".").c_str());
+                }
+                used[controller] = true;
+                if (type == "button") {
+                    setupMidiButton(m_bclMessage, encoder, channel, controller, config);
+                } else if (type == "encoder") {
+                    setupMidiEncoder(m_bclMessage, encoder, channel, controller, config);
+                }
+            }
+        }
+
+        if (py::hasattr(settings, "hotkeys")) {
+            py::list hotkeylist = py::cast<py::list>(settings.attr("hotkeys"));
+            for (auto hotkey : hotkeylist) {
+                py::tuple t = py::cast<py::tuple>(hotkey);
+                std::string type = py::cast<std::string>(t[0]);
+                py::function f = py::cast<py::function>(t[2]);
+                if (type == "key") {
+                    std::string key = py::cast<std::string>(t[1]);
+                    UINT mod;
+                    UINT vk;
+                    std::string errorMsg;
+                    Keynames::readKey(key, mod, vk, errorMsg);
+                    if (!errorMsg.empty()) {
+                        throw std::exception(errorMsg.c_str());
+                    }
+                    m_hotkeys.add(mod, vk, [f]() { f(); });
+                } else if (type == "button" || type == "encoder" || type == "cc") {
+                    py::dict config = py::cast<py::dict>(t[1]);
+                    const int id = py::cast<int>(config["id"]);
+                    const int channel = config.contains("channel") ? py::cast<int>(config["channel"]) : m_settings.m_midiChannel;
+                    const int controller = nextController(channel);
+                    if (type == "button") {
+                        setupMidiButton(m_bclMessage, id, channel, controller, config);
+                        m_channelMap[channel][controller] = Midi::Entry([f](int value) { f(value); });
+                    } else if (type == "encoder") {
+                        setupMidiEncoder(m_bclMessage, id, channel, controller, config);
+                        m_channelMap[channel][controller] = Midi::Entry([f](int value) { f(value-64); });
+                    } else if (type == "cc") {
+                        m_channelMap[channel][controller] = Midi::Entry([f](int value) { f(value); });
+                    }
+                }
+            }
+        }
+    } catch (const std::exception & ex) {
+        MessageBox(0, ex.what(), 0, MB_OK);
+        return false;
+    }
+
+    m_bclMessage("$end");
+    m_hotkeys.add(0, m_settings.m_recbutton, []() { g_app->record(); });
+    m_hotkeys.add(0, m_settings.m_playbutton, []() { g_app->playback(); });
 
     return true;
 }

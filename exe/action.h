@@ -3,19 +3,13 @@
 #include <windows.h>
 #include <string>
 
-class Settings;
-
 class Action {
 public:
-    static void minimize();
-    static void moveWindow(int deltaX, int deltaY, int deltaCX, int deltaCY);
-    static void setWindowPos(int x, int y, int cx, int cy);
-    static void runSaved(const std::string & fileName, Settings & settings);
+    static void runSaved(const std::string & fileName);
     static bool activate(const std::string & exeName, const std::string & windowName, const std::string & className);
-    static void run(const std::string & appName, const std::string & cmdLine, const std::string & currDir, WORD wShowWindow);
+    static void run(const std::string & appName, const std::string & cmdLine, const std::string & currDir);
     static void activateOrRun(const std::string & exeName, const std::string & windowName, const std::string & className,
-                              const std::string & appName, const std::string & cmdLine, const std::string & currDir, WORD wShowWindow);
-    static void switchWindow(int delta);
+                              const std::string & appName, const std::string & cmdLine, const std::string & currDir);
     static void nextWindow();
     static void prevWindow();
 };

@@ -11,6 +11,8 @@ constexpr int MENU_INACTIVATE = 4;
 constexpr int MENU_COUNTERSETTINGS = 5;
 constexpr int MENU_COUNTERRESET = 6;
 constexpr int MENU_SAVEMACRO = 7;
+constexpr int MENU_EDITCONFIG = 8;
+constexpr int MENU_RELOADCONFIG = 9;
 
 static HMENU initMenu() {
     MENUITEMINFO mii;
@@ -53,6 +55,20 @@ static HMENU initMenu() {
     InsertMenuItem(hMenu, 1, FALSE, &mii);
 
     mii.fMask = MIIM_FTYPE | MIIM_STRING | MIIM_ID;
+    mii.wID = MENU_EDITCONFIG;
+    mii.dwTypeData = (char *) "Edit Configuration";
+    mii.cch = (UINT) strlen(mii.dwTypeData);
+
+    InsertMenuItem(hMenu, 1, FALSE, &mii);
+
+    mii.fMask = MIIM_FTYPE | MIIM_STRING | MIIM_ID;
+    mii.wID = MENU_RELOADCONFIG;
+    mii.dwTypeData = (char *) "Reload Configuration";
+    mii.cch = (UINT) strlen(mii.dwTypeData);
+
+    InsertMenuItem(hMenu, 1, FALSE, &mii);
+
+    mii.fMask = MIIM_FTYPE | MIIM_STRING | MIIM_ID;
     mii.wID = MENU_QUIT;
     mii.dwTypeData = (char *) "Quit";
     mii.cch = (UINT) strlen(mii.dwTypeData);
@@ -62,72 +78,14 @@ static HMENU initMenu() {
     return hMenu;
 }
 
-INT_PTR CALLBACK counterSettings(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    static char buf[15];
-
-    MacroApp * app = (MacroApp *) GetWindowLongPtr(hWnd, GWLP_USERDATA);
-
-    switch (message) {
-        case WM_INITDIALOG: {
-            app = (MacroApp *) lParam;
-            SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR) app);
-
-            wsprintf(buf, "%d", app->m_settings.m_counterDigits);
-            SetWindowText(GetDlgItem(hWnd, IDC_EDIT_COUNTERDIGITS), buf);
-
-            if (app->m_settings.m_counterHex)
-                wsprintf(buf, "%x", app->m_settings.m_counter);
-            else
-                wsprintf(buf, "%d", app->m_settings.m_counter);
-
-            SetWindowText(GetDlgItem(hWnd, IDC_EDIT_NEXTCOUNTERVALUE), buf);
-            break;
-        }
-
-        case WM_COMMAND:
-            switch (LOWORD(wParam)) {
-                case IDOK:
-                    GetWindowText(GetDlgItem(hWnd, IDC_EDIT_COUNTERDIGITS), buf, 14);
-                    app->m_settings.m_counterDigits = atol(buf);
-
-                    GetWindowText(GetDlgItem(hWnd, IDC_EDIT_NEXTCOUNTERVALUE), buf, 14);
-                    app->m_settings.m_counter = strtoul(buf, NULL, (app->m_settings.m_counterHex ? 16 : 10));
-
-                    EndDialog(hWnd, 0);
-                    break;
-
-                case IDC_CHECK_HEXCOUNTER: {
-                    GetWindowText(GetDlgItem(hWnd, IDC_EDIT_NEXTCOUNTERVALUE), buf, 14);
-                    int value = strtoul(buf, NULL, (app->m_settings.m_counterHex ? 16 : 10));
-
-                    app->m_settings.m_counterHex = (IsDlgButtonChecked(hWnd, IDC_CHECK_HEXCOUNTER) == BST_CHECKED);
-
-                    if (app->m_settings.m_counterHex)
-                        wsprintf(buf, "%x", value);
-                    else
-                        wsprintf(buf, "%d", value);
-
-                    SetWindowText(GetDlgItem(hWnd, IDC_EDIT_NEXTCOUNTERVALUE), buf);
-                    break;
-                }
-
-                default:
-                    return FALSE;
-            }
-            break;
-        case WM_CLOSE:
-            EndDialog(hWnd, 0);
-            break;
-        default:
-            return FALSE;
-    }
-    return TRUE;
-}
-
 } // namespace
 
 ContextMenu::ContextMenu() {
     m_hMenu = initMenu();
+}
+
+ContextMenu::~ContextMenu() {
+    DestroyMenu(m_hMenu);
 }
 
 void ContextMenu::show(HWND hWnd) {
@@ -153,6 +111,12 @@ bool ContextMenu::handleCommand(WORD id, HINSTANCE hInstance, HWND hWnd) {
             return true;
         case MENU_SAVEMACRO:
             g_app->saveMacro();
+            return true;
+        case MENU_EDITCONFIG:
+            g_app->editConfigFile();
+            return true;
+        case MENU_RELOADCONFIG:
+            g_app->reload(g_app->m_hotkeys.m_enabled);
             return true;
     }
     return false;
