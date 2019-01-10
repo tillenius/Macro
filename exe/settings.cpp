@@ -35,8 +35,8 @@ static DWORD readMod(std::vector<std::string> words, size_t & i, std::string & e
 static DWORD readKeyName(const std::string & key, std::string & errorMsg) {
 
     // hex
-    if (key.size() > 2 && key[0] == '0' && key[1] == 'x')
-        return strtoul(key.c_str() + 2, 0, 16);
+    if (key.size() > 2 && key[0] == '#')
+        return strtoul(key.c_str() + 1, 0, 16);
 
     // name
     std::unordered_map<std::string, DWORD> keys = Keynames::GetMap();

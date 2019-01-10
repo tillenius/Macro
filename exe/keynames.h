@@ -208,7 +208,7 @@ public:
             }
         }
         char buf[12];
-        wsprintf(buf, "#$02", vk);
+        wsprintf(buf, "#%02x", vk);
         return buf;
     }
 
