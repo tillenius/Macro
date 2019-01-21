@@ -11,6 +11,7 @@
 
 constexpr int WM_USER_GOTKEY = WM_USER + 1;
 constexpr int WM_USER_SYSTRAY = WM_USER + 2;
+constexpr int WM_USER_RELOAD = WM_USER + 3;
 
 class MacroApp {
 public:

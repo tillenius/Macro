@@ -51,6 +51,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         case WM_USER_GOTKEY:
             g_app->key(wParam, lParam);
             return 0;
+        case WM_USER_RELOAD:
+            g_app->reload(g_app->m_hotkeys.m_enabled);
+            return 0;
         case WM_COMMAND:
             if (HIWORD(wParam) == 0) {
                 if (g_app->m_contextMenu.handleCommand(LOWORD(wParam), g_hInstance, hWnd)) {
@@ -153,6 +156,12 @@ DWORD WINAPI FileChangeNotificationThread(LPVOID lpParam) {
 MacroApp::MacroApp(HINSTANCE hInstance, HWND hWnd) : m_hInstance(hInstance), m_hWnd(hWnd), m_systray(hInstance, hWnd) {
     if (!reload(true)) {
         m_systray.Icon(IDI_ICON1);
+    }
+    static NotificationThreadData data;
+    data.notificationHandle = FindFirstChangeNotificationW(m_settings.m_settingsPath.c_str(), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE);
+    if (data.notificationHandle != INVALID_HANDLE_VALUE) {
+        data.hwnd = m_hWnd;
+        CreateThread(NULL, 0, FileChangeNotificationThread, &data, 0, NULL);
     }
 }
 

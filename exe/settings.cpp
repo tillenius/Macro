@@ -514,11 +514,11 @@ bool SettingsFile::load() {
         return false;
     }
 
-    std::wstring settingsPath(filepath);
-    settingsPath += L"\\Macro";
-    CreateDirectoryW(settingsPath.c_str(), NULL);
-    py::module::import("sys").attr("path").cast<py::list>().append(wstr_to_utf8(settingsPath).c_str());
-    m_settings.m_settingsFile = settingsPath + L"\\macro-settings.py";
+    m_settings.m_settingsPath = filepath;
+    m_settings.m_settingsPath += L"\\Macro";
+    CreateDirectoryW(m_settings.m_settingsPath.c_str(), NULL);
+    py::module::import("sys").attr("path").cast<py::list>().append(wstr_to_utf8(m_settings.m_settingsPath).c_str());
+    m_settings.m_settingsFile = m_settings.m_settingsPath + L"\\macro-settings.py";
  
     if (!fileExists(m_settings.m_settingsFile.c_str())) {
         std::ofstream out(m_settings.m_settingsFile.c_str());
