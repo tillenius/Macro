@@ -91,7 +91,9 @@ ContextMenu::~ContextMenu() {
 void ContextMenu::show(HWND hWnd) {
     POINT p;
     GetCursorPos(&p);
+    SetForegroundWindow(hWnd); // required (see docs for TrackPopupMenu)
     TrackPopupMenu(m_hMenu, TPM_LEFTALIGN | TPM_VCENTERALIGN | TPM_RIGHTBUTTON, p.x, p.y, 0, hWnd, NULL);
+    PostMessage(hWnd, WM_NULL, 0, 0); // force a task switch (see docs for TrackPopupMenu)
 }
 
 bool ContextMenu::handleCommand(WORD id, HINSTANCE hInstance, HWND hWnd) {
