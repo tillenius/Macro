@@ -51,21 +51,41 @@ bool parseKeyConfig(py::dict & config, const char * name, UINT & out) {
     return false;
 }
 
+py::handle pyHWND(HWND hwnd) {
+    static PyObject * ctypes_mod = PyImport_ImportModule("ctypes");
+    static PyObject * wintypes = PyObject_GetAttrString(ctypes_mod, "wintypes");
+    static PyObject * pyHWND = PyObject_GetAttrString(wintypes, "HWND");
+    PyObject * p = PyObject_CallFunction(pyHWND, "O", PyLong_FromVoidPtr((void*) hwnd));
+    return py::handle(p);
+}
+
+HWND pyHWND(py::object o) {
+    HWND hwnd = NULL;
+    PyObject * obj = o.ptr();
+    PyObject * value = PyObject_GetAttr(obj, PyUnicode_FromString("value"));
+    PyObject * tmp = PyNumber_Long(value);
+    Py_DECREF(value);
+    if (tmp) {
+        hwnd = (HWND) PyLong_AsVoidPtr(tmp);
+        Py_DECREF(tmp);
+    }
+    return hwnd;
+}
 static BOOL CALLBACK EnumChildWindowsCallback(HWND hwnd, LPARAM lParam) {
-    std::vector<HWND> & result = *(std::vector<HWND> *) lParam;
-    result.push_back(hwnd);
+    std::vector<py::handle> & result = *(std::vector<py::handle> *) lParam;
+    result.push_back(pyHWND(hwnd));
     return TRUE;
 }
 
 static BOOL CALLBACK EnumThreadWindowsCallback(HWND hwnd, LPARAM lParam) {
-    std::vector<HWND> & result = *(std::vector<HWND> *) lParam;
-    result.push_back(hwnd);
+    std::vector<py::handle> & result = *(std::vector<py::handle> *) lParam;
+    result.push_back(pyHWND(hwnd));
     return TRUE;
 }
 
 static BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam) {
-    std::vector<HWND> & result = *(std::vector<HWND> *) lParam;
-    result.push_back(hwnd);
+    std::vector<py::handle> & result = *(std::vector<py::handle> *) lParam;
+    result.push_back(pyHWND(hwnd));
     return TRUE;
 }
 
@@ -78,27 +98,6 @@ static std::tuple<int, int> makeTuple(POINT & point) {
 }
 
 } // namespace
-
-py::handle pyHWND(HWND hwnd) {
-    static PyObject * ctypes_mod = PyImport_ImportModule("ctypes");
-    static PyObject * wintypes = PyObject_GetAttrString(ctypes_mod, "wintypes");
-    static PyObject * pyHWND = PyObject_GetAttrString(wintypes, "HWND");
-    PyObject * p = PyObject_CallFunction(pyHWND, "O", PyLong_FromVoidPtr((void*) hwnd));
-    return py::handle(p);
-}
-
- HWND pyHWND(py::object o) {
-     HWND hwnd = NULL;
-     PyObject * obj = o.ptr();
-     PyObject * value = PyObject_GetAttr(obj, PyUnicode_FromString("value"));
-     PyObject * tmp = PyNumber_Long(value);
-     Py_DECREF(value);
-     if (tmp) {
-         hwnd = (HWND) PyLong_AsVoidPtr(tmp);
-         Py_DECREF(tmp);
-     }
-     return hwnd;
- }
 
 char buffer[4096];
 
@@ -205,28 +204,28 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
     });
 
     m.def("get_windows", []() {
-        std::vector<HWND> windows;
+        std::vector<py::handle> windows;
         for (HWND hwnd = ::GetTopWindow(0); hwnd != NULL; hwnd = ::GetNextWindow(hwnd, GW_HWNDNEXT)) {
-            windows.push_back(hwnd);
+            windows.push_back(pyHWND(hwnd));
         }
         return windows;
     });
 
     m.def("enum_child_windows", [](py::object hwnd_) {
         HWND hwnd = pyHWND(hwnd_);
-        std::vector<HWND> result;
+        std::vector<py::handle> result;
         EnumChildWindows(hwnd, EnumChildWindowsCallback, (LPARAM) &result);
         return result;
     });
 
     m.def("enum_thread_windows", [](DWORD threadId) {
-        std::vector<HWND> result;
+        std::vector<py::handle> result;
         EnumThreadWindows(threadId, EnumThreadWindowsCallback, (LPARAM) &result);
         return result;
     });
 
     m.def("enum_windows", [](DWORD threadId) {
-        std::vector<HWND> result;
+        std::vector<py::handle> result;
         ::EnumWindows(EnumWindowsCallback, (LPARAM) &result);
         return result;
     });
