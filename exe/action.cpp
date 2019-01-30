@@ -72,7 +72,7 @@ static HWND getHWnd(const std::string & exeName, const std::string & windowName,
         if (windowName != "*") {
             int size = GetWindowTextLength(hwnds[i]);
             std::vector<char> titleCurr(size + 2);
-            GetWindowText(hwnds[i], &titleCurr[0], size);
+            GetWindowText(hwnds[i], &titleCurr[0], size + 1);
             if (!Wildcards::match(windowName, &titleCurr[0]))
                 continue;
         }

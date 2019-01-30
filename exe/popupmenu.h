@@ -6,5 +6,13 @@
 
 class PopupMenu {
 public:
-    static int exec(const std::vector<std::string> & items);
+
+    PopupMenu();
+    HMENU m_hMenu;
+    int m_count = 0;
+
+    void destroy();
+    void append(const std::string & text, int value);
+    void append(const std::string & text, PopupMenu & submenu);
+    int exec();
 };

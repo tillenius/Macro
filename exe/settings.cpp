@@ -97,9 +97,25 @@ static std::tuple<int, int> makeTuple(POINT & point) {
     return std::tuple<int, int>(point.x, point.y);
 }
 
+static void buildMenu(PopupMenu & menu, py::list items) {
+    for (auto item : items) {
+        py::tuple t = py::cast<py::tuple>(item);
+        std::string text = py::cast<std::string>(t[0]);
+        if (py::isinstance<py::list>(t[1])) {
+            PopupMenu subMenu;
+            buildMenu(subMenu, py::cast<py::list>(t[1]));
+            menu.append(text, subMenu);
+        } else {
+            int value = py::cast<int>(t[1]);
+            menu.append(text, value);
+        }
+    }
+}
+
 } // namespace
 
 char buffer[4096];
+wchar_t wbuffer[4096];
 
 PYBIND11_EMBEDDED_MODULE(macro, m) {
 
@@ -301,9 +317,9 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
             sprintf_s(buffer, "    0x%08x", macro[i]);
             ret += buffer;
             ::GetKeyNameTextA((LONG) macro[i], buffer, sizeof(buffer));
-            ret += " # ";
+            ret += ", # ";
             ret += buffer;
-            ret += up ? "up\n" : "\n";
+            ret += up ? " up\n" : "\n";
         }
         ret += "]);";
         return ret;
@@ -327,7 +343,16 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
     // GUI
 
     m.def("menu", [](const std::vector<std::string> & items) -> int {
-        return PopupMenu::exec(items);
+        PopupMenu menu;
+        for (int i = 0; i < items.size(); ++i) {
+            menu.append(items[i], i + 1);
+        }
+        return menu.exec();
+    });
+    m.def("menu", [](py::list items) -> int {
+        PopupMenu menu;
+        buildMenu(menu, items);
+        return menu.exec();
     });
     m.def("list", [](const std::vector<std::string> & items) -> int {
         return PopupList::exec(items);
@@ -370,21 +395,27 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
 
     m.def("get_window_title", [](py::object hwnd_) {
         HWND hwnd = pyHWND(hwnd_);
-        int len = ::GetWindowTextLength(hwnd);
+        int len = ::GetWindowTextLengthW(hwnd);
         std::vector<char> buffer(len + 2);
-        ::GetWindowText(hwnd, &buffer[0], len + 1);
-        return std::string(&buffer[0]);
+        ::GetWindowTextW(hwnd, &wbuffer[0], len + 1);
+        return std::wstring(&wbuffer[0]);
     });
     m.def("set_window_title", [](py::object hwnd_, const std::string & s) {
         HWND hwnd = pyHWND(hwnd_);
         ::SetWindowText(hwnd, s.c_str());
     });
 
-    m.def("get_window_module_filename", [](py::object hwnd_) {
-        HWND hwnd = pyHWND(hwnd_);
-        if (::GetWindowModuleFileNameA(hwnd, buffer, sizeof(buffer)) == 0) {
+    m.def("get_process_filename", [](DWORD procId) {
+        HANDLE hProcess = ::OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, procId);
+        if (hProcess == NULL) {
             return std::string();
         }
+        DWORD size = sizeof(buffer);
+        if (::QueryFullProcessImageNameA(hProcess, 0, buffer, &size) == 0) {
+            CloseHandle(hProcess);
+            return std::string();
+        }
+        CloseHandle(hProcess);
         return std::string(&buffer[0]);
     });
 
@@ -423,6 +454,17 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         }
 
         MoveWindow(hwnd, x, y, cx, cy, TRUE);
+    });
+
+    m.def("get_window_threadid", [](py::object hwnd_) {
+        HWND hwnd = pyHWND(hwnd_);
+        return ::GetWindowThreadProcessId((HWND) hwnd, NULL);
+    });
+    m.def("get_window_processid", [](py::object hwnd_) {
+        HWND hwnd = pyHWND(hwnd_);
+        DWORD processId;
+        ::GetWindowThreadProcessId((HWND) hwnd, &processId);
+        return processId;
     });
 
     // Processes
