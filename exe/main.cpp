@@ -76,7 +76,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             PostQuitMessage(0);
             return 0;
         case WM_CLOSE:
-            DestroyWindow(hWnd);
+            ShowWindow(hWnd, SW_HIDE);
             return 0;
         default:
             return DefWindowProc(hWnd, message, wParam, lParam);
