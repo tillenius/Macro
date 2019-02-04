@@ -10,9 +10,8 @@ constexpr int MENU_QUIT = 3;
 constexpr int MENU_INACTIVATE = 4;
 constexpr int MENU_COUNTERSETTINGS = 5;
 constexpr int MENU_COUNTERRESET = 6;
-constexpr int MENU_SAVEMACRO = 7;
-constexpr int MENU_EDITCONFIG = 8;
-constexpr int MENU_RELOADCONFIG = 9;
+constexpr int MENU_EDITCONFIG = 7;
+constexpr int MENU_RELOADCONFIG = 8;
 
 static HMENU initMenu() {
     MENUITEMINFO mii;
@@ -43,13 +42,6 @@ static HMENU initMenu() {
     mii.fMask = MIIM_FTYPE | MIIM_STRING | MIIM_ID;
     mii.wID = MENU_COUNTERRESET;
     mii.dwTypeData = (char *) "Reset Counter";
-    mii.cch = (UINT) strlen(mii.dwTypeData);
-
-    InsertMenuItem(hMenu, 1, FALSE, &mii);
-
-    mii.fMask = MIIM_FTYPE | MIIM_STRING | MIIM_ID;
-    mii.wID = MENU_SAVEMACRO;
-    mii.dwTypeData = (char *) "Save Macro";
     mii.cch = (UINT) strlen(mii.dwTypeData);
 
     InsertMenuItem(hMenu, 1, FALSE, &mii);
@@ -110,9 +102,6 @@ bool ContextMenu::handleCommand(WORD id, HINSTANCE hInstance, HWND hWnd) {
             return true;
         case MENU_COUNTERRESET:
             g_app->resetCounter();
-            return true;
-        case MENU_SAVEMACRO:
-            g_app->saveMacro();
             return true;
         case MENU_EDITCONFIG:
             g_app->editConfigFile();

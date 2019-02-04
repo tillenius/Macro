@@ -106,32 +106,3 @@ void Macro::gotKey(Settings & settings, WPARAM wParam, DWORD lParam) {
 void Macro::clear() {
     m_macro.clear();
 }
-
-void Macro::save(const char * filename) {
-    HANDLE hFile = CreateFile(filename, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, NULL, NULL);
-    if (hFile == INVALID_HANDLE_VALUE)
-        return;
-    DWORD dwWritten;
-    for (size_t i = 0; i < m_macro.size(); i++)
-        WriteFile(hFile, &m_macro[i], 4, &dwWritten, NULL);
-    CloseHandle(hFile);
-}
-
-void Macro::load(const char * filename) {
-    m_macro.clear();
-
-    HANDLE hFile = CreateFile(filename, GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-    if (hFile == INVALID_HANDLE_VALUE) {
-        MessageBox(0, filename, 0, MB_OK);
-        return;
-    }
-
-    DWORD fileSize = GetFileSize(hFile, NULL);
-    DWORD dwRead;
-    while (SetFilePointer(hFile, 0, 0, FILE_CURRENT) != fileSize) {
-        DWORD dw;
-        ReadFile(hFile, &dw, 4, &dwRead, NULL);
-        m_macro.push_back(dw);
-    }
-    CloseHandle(hFile);
-}

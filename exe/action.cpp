@@ -271,9 +271,3 @@ void Action::prevWindow() {
 
     SendInput(6, lKey, sizeof(INPUT));
 }
-
-void Action::runSaved(const std::string & fileName) {
-    Macro m;
-    m.load(fileName.c_str());
-    m.playback(g_app->m_settings, m.get());
-}

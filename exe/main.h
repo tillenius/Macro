@@ -36,7 +36,6 @@ public:
     void key(WPARAM wParam, LPARAM lParam);
     void inactivate();
     void resetCounter();
-    void saveMacro();
     void editConfigFile();
     bool reload(bool enable);
 };

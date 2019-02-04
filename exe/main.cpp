@@ -254,27 +254,6 @@ void MacroApp::resetCounter() {
     m_settings.m_counter = 0;
 }
 
-void MacroApp::saveMacro() {
-    OPENFILENAME ofn;
-    std::vector<char> buffer(1000);
-
-    ZeroMemory(&ofn, sizeof(OPENFILENAME));
-    ofn.lStructSize = sizeof(OPENFILENAME);
-    ofn.hwndOwner = 0;
-    ofn.hInstance = 0;
-    ofn.lpstrFile = &buffer[0];
-    ofn.nMaxFile = (DWORD) buffer.size() - 1;
-    ofn.lpstrFilter = "All\0*.*\0";
-    ofn.nFilterIndex = 0;
-    ofn.lpstrFileTitle = NULL;
-    ofn.nMaxFileTitle = 0;
-    ofn.lpstrInitialDir = NULL;
-    ofn.Flags = OFN_PATHMUSTEXIST | OFN_EXPLORER;
-
-    if (GetSaveFileName(&ofn))
-        m_macro.save(ofn.lpstrFile);
-}
-
 void MacroApp::editConfigFile() {
     const std::string file = wstr_to_utf8(m_settings.m_settingsFile);
 
