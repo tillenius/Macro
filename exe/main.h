@@ -12,6 +12,7 @@
 constexpr int WM_USER_GOTKEY = WM_USER + 1;
 constexpr int WM_USER_SYSTRAY = WM_USER + 2;
 constexpr int WM_USER_RELOAD = WM_USER + 3;
+constexpr int WM_USER_GOTDEFERREDKEY = WM_USER + 4;
 
 class MacroApp {
 public:
@@ -23,21 +24,27 @@ public:
     ContextMenu m_contextMenu;
     SettingsDlg m_settingsDlg;
     Macro m_macro;
+    std::vector<DWORD> m_waitingToPlay;
     Midi m_midi;
     HMENU m_hMenu;
-    bool m_bRecord = false;
-    bool m_bActive = true;
+    std::vector<int> m_waitFor;
+    enum class recordState_t {IDLE, RECORD, INACTIVE, WAIT};
+    recordState_t m_state = recordState_t::IDLE;
 
     MacroApp(HINSTANCE hInstance, HWND hWnd);
     ~MacroApp();
     void record();
-    void playback();
+    void playback(const std::vector<DWORD> & macro, bool wait);
     void hotkey(int index) { m_hotkeys.execute(index); }
     void key(WPARAM wParam, LPARAM lParam);
+    void deferredKey(WPARAM wParam, LPARAM lParam);
     void inactivate();
     void resetCounter();
     void editConfigFile();
     bool reload(bool enable);
+    bool hasHook() {
+        return m_state == recordState_t::RECORD || m_state == recordState_t::WAIT; 
+    }
 };
 
 extern std::unique_ptr<MacroApp> g_app;

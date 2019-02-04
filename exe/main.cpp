@@ -51,6 +51,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         case WM_USER_GOTKEY:
             g_app->key(wParam, lParam);
             return 0;
+        case WM_USER_GOTDEFERREDKEY:
+            g_app->deferredKey(wParam, lParam);
+            return 0;
         case WM_USER_RELOAD:
             g_app->reload(g_app->m_hotkeys.m_enabled);
             return 0;
@@ -172,8 +175,8 @@ bool MacroApp::reload(bool enable) {
     }
 
     // stop recording if currently so
-    if (m_bRecord) {
-        m_bRecord = false;
+    if (m_state == recordState_t::RECORD) {
+        m_state = recordState_t::IDLE;
         Unhook();
         m_macro.clear();
     }
@@ -204,29 +207,99 @@ bool MacroApp::reload(bool enable) {
 }
 
 MacroApp::~MacroApp() {
-    if (m_bRecord)
+    if (m_state == recordState_t::RECORD)
         Unhook();
 }
 
 void MacroApp::record() {
-    if (!m_bRecord) {
-        m_systray.Icon(IDI_ICON3);
-        m_macro.clear();
-        Hook();
-        m_bRecord = true;
-    } else {
+    if (m_state == recordState_t::RECORD) {
         m_systray.Icon(IDI_ICON1);
         Unhook();
-        m_bRecord = false;
+        m_state = recordState_t::IDLE;
+    } else {
+        m_systray.Icon(IDI_ICON3);
+        m_macro.clear();
+        if (!hasHook()) {
+            Hook();
+        }
+        m_state = recordState_t::RECORD;
     }
 }
 
-void MacroApp::playback() {
-    if (!m_bRecord)
-        m_macro.playback(m_settings, m_macro.get());
+void MacroApp::playback(const std::vector<DWORD> & macro, bool wait) {
+    if (wait) {
+        if (m_state != recordState_t::IDLE) {
+            return;
+        }
+
+        BYTE state[256];
+        if (::GetKeyboardState(state) == 0) {
+            return;
+        }
+
+        for (int i = 8; i < sizeof(state) / sizeof(state[0]); ++i) {
+            if (::GetAsyncKeyState(i) != 0) {
+                m_waitFor.push_back(i);
+            }
+        }
+
+        if (m_waitFor.empty()) {
+            Macro::playback(m_settings, macro);
+        } else {
+            Hook();
+            m_state = recordState_t::WAIT;
+            m_waitingToPlay = macro;
+        }
+        return;
+    }
+    else {
+        if (!hasHook())
+            Macro::playback(m_settings, macro);
+    }
+}
+
+void MacroApp::deferredKey(WPARAM wParam, LPARAM lParam) {
+    bool pressed = (lParam & (1 << 31)) == 0;
+    if (pressed) {
+        // skip if already waiting for the pressed key
+        for (int i = 0; i < m_waitFor.size(); ++i) {
+            if (m_waitFor[i] == wParam) {
+                return;
+            }
+        }
+
+        // start waiting for newly pressed key
+        m_waitFor.push_back((int) wParam);
+        return;
+    }
+
+    for (int i = 0; i < m_waitFor.size(); ) {
+        if (m_waitFor[i] == wParam || ::GetAsyncKeyState(m_waitFor[i]) == 0) {
+            if (i != m_waitFor.size() - 1) {
+                m_waitFor[i] = m_waitFor.back();
+            }
+            m_waitFor.pop_back();
+        } else {
+            ++i;
+        }
+    }
+
+    if (m_waitFor.empty()) {
+        m_state = recordState_t::IDLE;
+        Unhook();
+        Macro::playback(m_settings, m_waitingToPlay);
+    }
 }
 
 void MacroApp::key(WPARAM wParam, LPARAM lParam) {
+    if (m_state == recordState_t::WAIT) {
+        // ::GetAsyncKeyState() might not be updated with this key event.
+        // Hopefully reposting it ensures that ::GetAsyncKeyState is up to date.
+        //OutputDebugString((std::string("Key: ") + std::to_string(wParam) + " GetAsyncKeyState: " + std::to_string(::GetAsyncKeyState(wParam)) + "\n").c_str());
+        PostMessage(m_hWnd, WM_USER_GOTDEFERREDKEY, wParam, lParam);
+        return;
+    }
+
     if (lParam & 0x80000000)
         m_systray.Icon(IDI_ICON3);
     else
@@ -235,18 +308,17 @@ void MacroApp::key(WPARAM wParam, LPARAM lParam) {
 }
 
 void MacroApp::inactivate() {
-    m_bActive = !m_bActive;
-    if (m_bActive) {
+    if (m_state == recordState_t::INACTIVE) {
         m_systray.Icon(IDI_ICON1);
         m_hotkeys.enable(m_hWnd);
+        m_state = recordState_t::IDLE;
     } else {
-        if (m_bRecord) {
-            m_systray.Icon(IDI_ICON1);
+        if (m_state == recordState_t::RECORD) {
             Unhook();
-            m_bRecord = false;
         }
         m_hotkeys.disable();
         m_systray.Icon(IDI_ICON4);
+        m_state = recordState_t::INACTIVE;
     }
 }
 

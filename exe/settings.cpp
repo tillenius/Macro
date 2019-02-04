@@ -300,8 +300,8 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
 
     // Macro
 
-    m.def("play", [](const std::vector<DWORD> & macro) {
-        Macro::playback(g_app->m_settings, macro);
+    m.def("play", [](const std::vector<DWORD> & macro, bool wait) {
+        g_app->playback(macro, wait);
     });
 
     m.def("paste", []() {
@@ -325,7 +325,7 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
             ret += buffer;
             ret += up ? " up\n" : "\n";
         }
-        ret += "]);";
+        ret += "], True);";
         return ret;
     });
 
@@ -651,7 +651,7 @@ bool SettingsFile::load() {
 
     m_bclMessage("$end");
     m_hotkeys.add(0, m_settings.m_recbutton, []() { g_app->record(); });
-    m_hotkeys.add(0, m_settings.m_playbutton, []() { g_app->playback(); });
+    m_hotkeys.add(0, m_settings.m_playbutton, []() { g_app->playback(g_app->m_macro.get(), true); });
 
     return true;
 }
