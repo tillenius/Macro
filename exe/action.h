@@ -12,4 +12,5 @@ public:
                               const std::string & appName, const std::string & cmdLine, const std::string & currDir);
     static void nextWindow();
     static void prevWindow();
+    static void paste();
 };

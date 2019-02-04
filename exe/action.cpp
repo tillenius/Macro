@@ -146,6 +146,60 @@ void Action::activateOrRun(const std::string & exeName, const std::string & wind
     run(appName, cmdLine, currDir);
 }
 
+void Action::paste() {
+    std::vector<INPUT> keys;
+    std::vector<int> faked;
+
+    BYTE state[256];
+    if (::GetKeyboardState(state) == 0) {
+        return;
+    }
+
+    for (int i = 8; i < sizeof(state) / sizeof(state[0]); ++i) {
+        if (::GetAsyncKeyState(i) != 0) {
+            faked.push_back(i);
+            INPUT input;
+            input.ki.wVk = i;
+            input.ki.dwFlags = KEYEVENTF_KEYUP;
+            input.type = INPUT_KEYBOARD;
+            keys.push_back(input);
+        }
+    }
+
+    INPUT input;
+
+    input.ki.wVk = VK_LCONTROL;
+    input.ki.dwFlags = 0;
+    input.type = INPUT_KEYBOARD;
+    keys.push_back(input);
+
+    input.ki.wVk = 'V';
+    input.ki.dwFlags = 0;
+    input.type = INPUT_KEYBOARD;
+    keys.push_back(input);
+
+    input.ki.wVk = 'V';
+    input.ki.dwFlags = KEYEVENTF_KEYUP;
+    input.type = INPUT_KEYBOARD;
+    keys.push_back(input);
+
+    input.ki.wVk = VK_LCONTROL;
+    input.ki.dwFlags = KEYEVENTF_KEYUP;
+    input.type = INPUT_KEYBOARD;
+    keys.push_back(input);
+
+    // attempt to reset state, but won't work left/right shift/ctrl/win etc.
+    //
+    //for (int i = 0; i < faked.size(); ++i) {
+    //    input.ki.wVk = faked[i];
+    //    input.ki.dwFlags = 0;
+    //    input.type = INPUT_KEYBOARD;
+    //    keys.push_back(input);
+    //}
+
+    SendInput((UINT) keys.size(), &keys[0], sizeof(INPUT));
+}
+
 void Action::nextWindow() {
     INPUT lKey[5];
 

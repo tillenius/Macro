@@ -304,6 +304,10 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         Macro::playback(g_app->m_settings, macro);
     });
 
+    m.def("paste", []() {
+        Action::paste();
+    });
+
     m.def("get_macro_as_python", []() {
         const std::vector<DWORD> & macro = g_app->m_macro.get();
         if (macro.empty()) {
