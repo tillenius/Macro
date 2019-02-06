@@ -63,6 +63,9 @@ HWND pyHWND(py::object o) {
     HWND hwnd = NULL;
     PyObject * obj = o.ptr();
     PyObject * value = PyObject_GetAttr(obj, PyUnicode_FromString("value"));
+    if (value == nullptr) {
+        return NULL;
+    }
     PyObject * tmp = PyNumber_Long(value);
     Py_DECREF(value);
     if (tmp) {
@@ -371,6 +374,30 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         return pyHWND(::GetAncestor(::GetForegroundWindow(), GA_ROOT));
     });
 
+    m.def("get_foreground_window", []() {
+        return pyHWND(::GetForegroundWindow());
+    });
+
+    m.def("get_active", []() {
+        GUITHREADINFO gti;
+        ::ZeroMemory(&gti, sizeof(gti));
+        gti.cbSize = sizeof(GUITHREADINFO);
+        if (::GetGUIThreadInfo(0, &gti) == 0) {
+            return pyHWND(0);
+        }
+        return pyHWND(gti.hwndActive);
+    });
+
+    m.def("get_focus", []() {
+        GUITHREADINFO gti;
+        ::ZeroMemory(&gti, sizeof(gti));
+        gti.cbSize = sizeof(GUITHREADINFO);
+        if (::GetGUIThreadInfo(0, &gti) == 0) {
+            return pyHWND(0);
+        }
+        return pyHWND(gti.hwndFocus);
+    });
+
     m.def("is_main_window", [](py::object hwnd_) {
         HWND hwnd = pyHWND(hwnd_);
         return (GetWindowLong(hwnd, GWL_STYLE) & WS_VISIBLE) != 0;
@@ -404,6 +431,7 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         ::GetWindowTextW(hwnd, &wbuffer[0], len + 1);
         return std::wstring(&wbuffer[0]);
     });
+
     m.def("set_window_title", [](py::object hwnd_, const std::string & s) {
         HWND hwnd = pyHWND(hwnd_);
         ::SetWindowText(hwnd, s.c_str());
@@ -464,11 +492,60 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         HWND hwnd = pyHWND(hwnd_);
         return ::GetWindowThreadProcessId((HWND) hwnd, NULL);
     });
+
     m.def("get_window_processid", [](py::object hwnd_) {
         HWND hwnd = pyHWND(hwnd_);
         DWORD processId;
         ::GetWindowThreadProcessId((HWND) hwnd, &processId);
         return processId;
+    });
+
+    m.def("get_cursor_pos", []() {
+        POINT p;
+        if (::GetCursorPos(&p) == 0) {
+            return std::tuple<int, int>(-1, -1);
+        }
+        return std::tuple<int, int>(p.x, p.y);
+    });
+
+    m.def("window_from_point", [](int x, int y) {
+        POINT p;
+        p.x = x;
+        p.y = y;
+        return pyHWND(::WindowFromPoint(p));
+    });
+
+    m.def("child_window_from_point", [](py::object hwnd_, int x, int y) {
+        HWND hwnd = pyHWND(hwnd_);
+        POINT p;
+        p.x = x;
+        p.y = y;
+        return pyHWND(::ChildWindowFromPoint(hwnd, p));
+    });
+
+    // Dialogs
+
+    m.def("get_dlg_ctrl_id", [](py::object hwnd_) {
+        HWND hwnd = pyHWND(hwnd_);
+        return ::GetDlgCtrlID(hwnd);
+    });
+
+    m.def("get_dlg_item", [](py::object hwnd_, int id) {
+        HWND hwnd = pyHWND(hwnd_);
+        return pyHWND(::GetDlgItem(hwnd, id));
+    });
+
+    m.def("get_dlg_item_int", [](py::object hwnd_, int id) {
+        HWND hwnd = pyHWND(hwnd_);
+        return ::GetDlgItemInt(hwnd, id, NULL, TRUE);
+    });
+
+    m.def("get_dlg_item_text", [](py::object hwnd_, int id) {
+        HWND hwnd = pyHWND(hwnd_);
+        if (::GetDlgItemText(hwnd, id, &buffer[0], sizeof(buffer)) == 0) {
+            return std::string();
+        }
+        return std::string(&buffer[0]);
     });
 
     // Processes
