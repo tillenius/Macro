@@ -19,6 +19,7 @@
 #include <tlhelp32.h>
 #include "pybind11/embed.h"
 #include "pybind11/stl.h"
+#include "atlbase.h"
 
 namespace py = pybind11;
 
@@ -243,7 +244,7 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         return result;
     });
 
-    m.def("enum_windows", [](DWORD threadId) {
+    m.def("enum_windows", []() {
         std::vector<py::handle> result;
         ::EnumWindows(EnumWindowsCallback, (LPARAM) &result);
         return result;
@@ -369,6 +370,67 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
     });
 
     // Build-in windows management
+
+    m.def("switch_to_this_window", [](py::object hwnd_, bool alttab) {
+        HWND hwnd = pyHWND(hwnd_);
+        ::SwitchToThisWindow(hwnd, alttab ? TRUE : FALSE);
+    });
+
+    m.def("find_window", [](std::string className, std::string windowName) {
+        return pyHWND(::FindWindow(className.empty() ? NULL : className.c_str(), windowName.empty() ? NULL : windowName.c_str()));
+    });
+
+    m.def("find_windows", [](py::object hwnd_, std::string className, std::string windowName) {
+        HWND hwnd = pyHWND(hwnd_);
+        std::vector<py::handle> res;
+        HWND h = NULL;
+        for (;;) {
+            h = ::FindWindowEx(hwnd, h, className.empty() ? NULL : className.c_str(), windowName.empty() ? NULL : windowName.c_str());
+            if (h == NULL) {
+                break;
+            }
+            res.push_back(pyHWND(h));
+        }
+        return res;
+    });
+
+    m.def("get_sb_text", [](py::object hwnd_, int index) {
+        HWND hwnd = pyHWND(hwnd_);
+
+        DWORD pid;
+        ::GetWindowThreadProcessId(hwnd, &pid);
+
+        HANDLE process = ::OpenProcess(PROCESS_VM_READ | PROCESS_VM_OPERATION, FALSE, pid);
+        if (process == NULL) {
+            return std::string();
+        }
+
+        int count = LOWORD(SendMessage(hwnd, SB_GETTEXTLENGTH, index, 0));
+        if (count <= 0) {
+            CloseHandle(process);
+            return std::string();
+        }
+
+        char * buffer = (char *) VirtualAllocEx(process, NULL, count + 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (buffer == NULL) {
+            CloseHandle(process);
+            return std::string();
+        }
+
+        SendMessage(hwnd, SB_GETTEXT, index, (LPARAM) buffer);
+
+        std::vector<char> memLocal(count + 2);
+        if (::ReadProcessMemory(process, buffer, &memLocal[0], memLocal.size(), NULL) == 0) {
+            ::VirtualFreeEx(process, buffer, count + 2, MEM_DECOMMIT | MEM_RELEASE);
+            CloseHandle(process);
+            return std::string();
+        }
+
+        ::VirtualFreeEx(process, buffer, count + 2, MEM_DECOMMIT | MEM_RELEASE);
+        CloseHandle(process);
+
+        return std::string(&memLocal[0]);
+    });
 
     m.def("get_current_window", []() {
         return pyHWND(::GetAncestor(::GetForegroundWindow(), GA_ROOT));
@@ -567,6 +629,82 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
     });
     m.def("midi_debug", [](bool state) {
         g_app->m_midi.m_debug = state;
+    });
+
+    m.def("open_in_vs", [](std::string filename, int line) {
+
+        CLSID clsid;
+        if (FAILED(::CLSIDFromProgID(L"VisualStudio.DTE.15.0", &clsid)))
+            return false;
+
+        CComPtr<IUnknown> punk;
+        if (FAILED(::GetActiveObject(clsid, NULL, &punk)))
+            return false;
+
+        CComPtr<IDispatch> pDisp;
+        if (FAILED(punk->QueryInterface(IID_PPV_ARGS(&pDisp))))
+            return false;
+
+        DISPID dispidExecuteCommand;
+        CComBSTR strExecuteCommand(L"ExecuteCommand");
+        if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &strExecuteCommand, 1, LOCALE_USER_DEFAULT, &dispidExecuteCommand)))
+            return false;
+
+        CComVariant variant_result;
+        EXCEPINFO ExceptInfo;
+
+        CComBSTR bstrCommand((std::string("File.OpenFile ") + filename).c_str());
+        VARIANTARG variant_arg[1];
+        VariantInit(&variant_arg[0]);
+        variant_arg[0].vt = VT_BSTR;
+        variant_arg[0].bstrVal = bstrCommand;
+        DISPPARAMS args = {variant_arg, NULL, 1, 0};
+        if (FAILED(pDisp->Invoke(dispidExecuteCommand, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &args, &variant_result, &ExceptInfo, NULL)))
+            return false;
+
+        DISPID dispidActiveDocument;
+        CComBSTR strActiveDocument(L"ActiveDocument");
+        if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &strActiveDocument, 1, LOCALE_USER_DEFAULT, &dispidActiveDocument)))
+            return false;
+
+        {
+            DISPPARAMS args = {NULL, NULL, 0, 0};
+            if (FAILED(pDisp->Invoke(dispidActiveDocument, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
+                return false;
+        }
+
+        CComPtr<IDispatch> activeDocument = variant_result.pdispVal;
+        DISPID dispidSelection;
+        CComBSTR strSelection(L"Selection");
+        if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
+            return false;
+
+        {
+            DISPPARAMS args = {NULL, NULL, 0, 0};
+            if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
+                return false;
+        }
+
+        CComPtr<IDispatch> selection = variant_result.pdispVal;
+        DISPID dispidMoveToDisplayColumn;
+        CComBSTR strMoveToDisplayColumn(L"MoveToDisplayColumn");
+        if (FAILED(selection->GetIDsOfNames(IID_NULL, &strMoveToDisplayColumn, 1, LOCALE_USER_DEFAULT, &dispidMoveToDisplayColumn)))
+            return false;
+
+        {
+            VARIANTARG variant_arg2[2];
+            VariantInit(&variant_arg2[0]);
+            VariantInit(&variant_arg2[1]);
+            variant_arg2[0].vt = VT_INT;
+            variant_arg2[0].intVal = 1;
+            variant_arg2[1].vt = VT_INT;
+            variant_arg2[1].intVal = line;
+            DISPPARAMS argsMove = {variant_arg2, NULL, 2, 0};
+            if (FAILED(selection->Invoke(dispidMoveToDisplayColumn, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &argsMove, &variant_result, &ExceptInfo, NULL)))
+                return false;
+        }
+
+        return true;
     });
 }
 
