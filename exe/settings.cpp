@@ -371,6 +371,11 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
 
     // Build-in windows management
 
+    m.def("show_window", [](py::object hwnd_, int cmdShow) {
+        HWND hwnd = pyHWND(hwnd_);
+        ::ShowWindow(hwnd, cmdShow);
+    });
+
     m.def("switch_to_this_window", [](py::object hwnd_, bool alttab) {
         HWND hwnd = pyHWND(hwnd_);
         ::SwitchToThisWindow(hwnd, alttab ? TRUE : FALSE);
