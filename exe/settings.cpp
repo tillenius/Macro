@@ -308,8 +308,17 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         g_app->playback(macro, wait);
     });
 
+    m.def("copy", []() {
+        Action::copy();
+    });
+    m.def("cut", []() {
+        Action::cut();
+    });
     m.def("paste", []() {
         Action::paste();
+    });
+    m.def("screenshot", []() {
+        Action::screenshot();
     });
 
     m.def("get_macro_as_python", []() {
@@ -590,6 +599,10 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         return pyHWND(::ChildWindowFromPoint(hwnd, p));
     });
 
+    m.def("main_window_from_pid", [](DWORD pid) {
+        return Action::getMainWindowFromPid(pid);
+    });
+
     // Dialogs
 
     m.def("get_dlg_ctrl_id", [](py::object hwnd_) {
@@ -637,7 +650,6 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
     });
 
     m.def("open_in_vs", [](std::string filename, int line) {
-
         CLSID clsid;
         if (FAILED(::CLSIDFromProgID(L"VisualStudio.DTE.15.0", &clsid)))
             return false;
@@ -667,30 +679,30 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         if (FAILED(pDisp->Invoke(dispidExecuteCommand, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &args, &variant_result, &ExceptInfo, NULL)))
             return false;
 
-        DISPID dispidActiveDocument;
-        CComBSTR strActiveDocument(L"ActiveDocument");
-        if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &strActiveDocument, 1, LOCALE_USER_DEFAULT, &dispidActiveDocument)))
-            return false;
-
         {
+            DISPID dispidActiveDocument;
+            CComBSTR strActiveDocument(L"ActiveDocument");
+            if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &strActiveDocument, 1, LOCALE_USER_DEFAULT, &dispidActiveDocument)))
+                return false;
+
             DISPPARAMS args = {NULL, NULL, 0, 0};
             if (FAILED(pDisp->Invoke(dispidActiveDocument, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
                 return false;
         }
-
         CComPtr<IDispatch> activeDocument = variant_result.pdispVal;
-        DISPID dispidSelection;
-        CComBSTR strSelection(L"Selection");
-        if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
-            return false;
 
         {
+            DISPID dispidSelection;
+            CComBSTR strSelection(L"Selection");
+            if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
+                return false;
+
             DISPPARAMS args = {NULL, NULL, 0, 0};
             if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
                 return false;
         }
-
         CComPtr<IDispatch> selection = variant_result.pdispVal;
+
         DISPID dispidMoveToDisplayColumn;
         CComBSTR strMoveToDisplayColumn(L"MoveToDisplayColumn");
         if (FAILED(selection->GetIDsOfNames(IID_NULL, &strMoveToDisplayColumn, 1, LOCALE_USER_DEFAULT, &dispidMoveToDisplayColumn)))
@@ -871,7 +883,7 @@ bool SettingsFile::load() {
 
     m_bclMessage("$end");
     m_hotkeys.add(0, m_settings.m_recbutton, []() { g_app->record(); });
-    m_hotkeys.add(0, m_settings.m_playbutton, []() { g_app->playback(g_app->m_macro.get(), true); });
+    m_hotkeys.add(0, m_settings.m_playbutton, []() { g_app->playback(g_app->m_macro.get(), false); });
 
     return true;
 }

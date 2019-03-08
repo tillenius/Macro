@@ -232,13 +232,13 @@ void MacroApp::playback(const std::vector<DWORD> & macro, bool wait) {
             return;
         }
 
-        BYTE state[256];
-        if (::GetKeyboardState(state) == 0) {
-            return;
-        }
-
-        for (int i = 8; i < sizeof(state) / sizeof(state[0]); ++i) {
-            if (::GetAsyncKeyState(i) != 0) {
+        for (int i = 8; i < 256; ++i) {
+            if (i == 0x10 || i == 0x11 || i == 0x12) {
+                // ignore VK_SHIFT, VK_CONTROL and VK_MENU.
+                // care about VK_LSHIFT, VK_RSHIFT, VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU instead
+                continue;
+            }
+            if ((::GetAsyncKeyState(i) & 0x8000) != 0) {
                 m_waitFor.push_back(i);
             }
         }

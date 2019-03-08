@@ -12,45 +12,73 @@
 #include <vector>
 #include <string>
 
-namespace {
-
-static void getThreadIds(DWORD dwPid, std::vector<DWORD> &dwThreads) {
+void Action::getThreadIds(DWORD pid, std::vector<DWORD> & threadids) {
     for (ThreadIterator i; !i.end(); ++i)
-        if (i->th32OwnerProcessID == dwPid)
-            dwThreads.push_back(i->th32ThreadID);
+        if (i->th32OwnerProcessID == pid)
+            threadids.push_back(i->th32ThreadID);
 }
 
-static bool isMainWindow(HWND hWnd) {
-    return (GetWindowLong(hWnd, GWL_STYLE) & WS_VISIBLE) != 0;
-}
-
-static void getMainWindows(DWORD dwThread, std::vector<HWND> &hwnds) {
+void Action::getWindowsFromThread(DWORD threadid, std::vector<HWND> & hwnds) {
     for (WindowIterator i; !i.end(); ++i) {
-        if (i.getThreadId() == dwThread) {
-            HWND hWnd = i.getHWND();
-            if (isMainWindow(hWnd))
-                hwnds.push_back(hWnd);
-        }
+        if (i.getThreadId() == threadid)
+            hwnds.push_back(i.getHWND());
     }
 }
 
-static void getHwndsByPid(DWORD dwPid, std::vector<HWND> &hwnds) {
+void Action::getPidsFromExe(const std::string & exeName, std::vector<DWORD> & pids) {
+    for (ProcessIterator i; !i.end(); ++i)
+        if (Wildcards::match(exeName, i->szExeFile))
+            pids.push_back(i->th32ProcessID);
+}
+
+void Action::getWindowsFromPid(DWORD dwPid, std::vector<HWND> &hwnds) {
     std::vector<DWORD> dwThreads;
     getThreadIds(dwPid, dwThreads);
     for (size_t i = 0; i < dwThreads.size(); ++i)
-        getMainWindows(dwThreads[i], hwnds);
+        getWindowsFromThread(dwThreads[i], hwnds);
 }
 
-static void getAppHwnd(const std::string &appName, std::vector<HWND> &hwnds) {
-    std::vector<DWORD> dwPids;
+void Action::getWindowsFromExe(const std::string & exeName, std::vector<HWND> & hwnds) {
+    std::vector<DWORD> pids;
+    getPidsFromExe(exeName, pids);
 
-    for (ProcessIterator i; !i.end(); ++i)
-        if (Wildcards::match(appName, i->szExeFile))
-            dwPids.push_back(i->th32ProcessID);
-
-    for (size_t i = 0; i < dwPids.size(); ++i)
-        getHwndsByPid(dwPids[i], hwnds);
+    for (size_t i = 0; i < pids.size(); ++i)
+        getWindowsFromPid(pids[i], hwnds);
     return;
+}
+
+namespace {
+
+static bool isMainWindow(HWND hWnd) {
+    if ((GetWindowLong(hWnd, GWL_STYLE) & WS_VISIBLE) == 0) {
+        return false;
+    }
+    return GetAncestor(hWnd, GA_ROOT) == hWnd;
+}
+
+}
+
+HWND Action::getMainWindowFromThread(DWORD threadid) {
+    for (WindowIterator i; !i.end(); ++i) {
+        if (i.getThreadId() == threadid) {
+            HWND hwnd = i.getHWND();
+            if (isMainWindow(hwnd))
+                return hwnd;
+        }
+    }
+    return NULL;
+}
+
+HWND Action::getMainWindowFromPid(DWORD pid) {
+    std::vector<DWORD> threadids;
+    Action::getThreadIds(pid, threadids);
+    for (size_t i = 0; i < threadids.size(); ++i) {
+        HWND hwnd = getMainWindowFromThread(threadids[i]);
+        if (hwnd != NULL) {
+            return hwnd;
+        }
+    }
+    return NULL;
 }
 
 static HWND getHWnd(const std::string & exeName, const std::string & windowName, const std::string & className) {
@@ -59,8 +87,20 @@ static HWND getHWnd(const std::string & exeName, const std::string & windowName,
         for (WindowIterator i; !i.end(); ++i)
             if (isMainWindow(i.getHWND()))
                 hwnds.push_back(i.getHWND());
-    } else
-        getAppHwnd(exeName, hwnds);
+    } else {
+        std::vector<DWORD> pids;
+        Action::getPidsFromExe(exeName, pids);
+        for (size_t i = 0; i < pids.size(); ++i) {
+            std::vector<DWORD> threads;
+            Action::getThreadIds(pids[i], threads);
+            for (size_t j = 0; j < threads.size(); ++j) {
+                HWND hwnd = Action::getMainWindowFromThread(threads[j]);
+                if (hwnd != NULL) {
+                    hwnds.push_back(hwnd);
+                }
+            }
+        }
+    }
 
     if (hwnds.size() == 0)
         return NULL;
@@ -99,8 +139,6 @@ static HWND getHWnd(const std::string & exeName, const std::string & windowName,
     return accepted[0];
 }
 
-} // namespace
-
 bool Action::activate(const std::string & exeName, const std::string & windowName, const std::string & className) {
     HWND hWnd = getHWnd(exeName, windowName, className);
     if (hWnd != NULL) {
@@ -109,14 +147,6 @@ bool Action::activate(const std::string & exeName, const std::string & windowNam
     }
     return false;
 }
-
-//DWORD RunThreadFunc(LPVOID lpv) {
-//    PROCESS_INFORMATION * pi = (PROCESS_INFORMATION *) lpv;
-//    WaitForSingleObject(pi->hProcess, INFINITE);
-//    CloseHandle(pi->hThread);
-//    CloseHandle(pi->hProcess);
-//    return 0;
-//}
 
 void Action::run(const std::string & appName, const std::string & cmdLine, const std::string & currDir) {
     PROCESS_INFORMATION lpProcessInfo{0};
@@ -128,8 +158,6 @@ void Action::run(const std::string & appName, const std::string & cmdLine, const
     if (CreateProcess(appName.c_str(), (LPSTR) cmdLine.c_str(), NULL, NULL, FALSE, NULL, NULL, szCurrDir, &siStartupInfo, &lpProcessInfo)) {
         CloseHandle(lpProcessInfo.hThread);
         CloseHandle(lpProcessInfo.hProcess);
-        //DWORD  g_dwThreadId;
-        //CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE) RunThreadFunc, &lpProcessInfo, 0, &g_dwThreadId);
     } else {
         LPVOID lpMsgBuf;
         FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR) &lpMsgBuf, 0, NULL);
@@ -146,128 +174,95 @@ void Action::activateOrRun(const std::string & exeName, const std::string & wind
     run(appName, cmdLine, currDir);
 }
 
-void Action::paste() {
+struct key_t {
+    WORD    wVk;
+    DWORD   dwFlags;
+};
+
+static void sendKeys(const std::vector<key_t> & keysin, bool reset) {
     std::vector<INPUT> keys;
     std::vector<int> faked;
 
-    BYTE state[256];
-    if (::GetKeyboardState(state) == 0) {
-        return;
-    }
+    INPUT input;
+    input.type = INPUT_KEYBOARD;
 
-    for (int i = 8; i < sizeof(state) / sizeof(state[0]); ++i) {
-        if (::GetAsyncKeyState(i) != 0) {
-            faked.push_back(i);
-            INPUT input;
-            input.ki.wVk = i;
-            input.ki.dwFlags = KEYEVENTF_KEYUP;
-            input.type = INPUT_KEYBOARD;
-            keys.push_back(input);
+    if (reset) {
+        for (int i = 8; i < 256; ++i) {
+            if (i == 0x10 || i == 0x11 || i == 0x12) {
+                // ignore VK_SHIFT, VK_CONTROL and VK_MENU.
+                // care about VK_LSHIFT, VK_RSHIFT, VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU instead
+                continue;
+            }
+            if ((::GetAsyncKeyState(i) & 0x8000) != 0) {
+                faked.push_back(i);
+                input.ki.wVk = i;
+                input.ki.dwFlags = KEYEVENTF_KEYUP;
+                keys.push_back(input);
+            }
         }
     }
 
-    INPUT input;
+    for (int i = 0; i < keysin.size(); ++i) {
+        input.ki.wVk = keysin[i].wVk;
+        input.ki.dwFlags = keysin[i].dwFlags;
+        keys.push_back(input);
+    }
 
-    input.ki.wVk = VK_LCONTROL;
-    input.ki.dwFlags = 0;
-    input.type = INPUT_KEYBOARD;
-    keys.push_back(input);
-
-    input.ki.wVk = 'V';
-    input.ki.dwFlags = 0;
-    input.type = INPUT_KEYBOARD;
-    keys.push_back(input);
-
-    input.ki.wVk = 'V';
-    input.ki.dwFlags = KEYEVENTF_KEYUP;
-    input.type = INPUT_KEYBOARD;
-    keys.push_back(input);
-
-    input.ki.wVk = VK_LCONTROL;
-    input.ki.dwFlags = KEYEVENTF_KEYUP;
-    input.type = INPUT_KEYBOARD;
-    keys.push_back(input);
-
-    // attempt to reset state, but won't work left/right shift/ctrl/win etc.
-    //
-    //for (int i = 0; i < faked.size(); ++i) {
-    //    input.ki.wVk = faked[i];
-    //    input.ki.dwFlags = 0;
-    //    input.type = INPUT_KEYBOARD;
-    //    keys.push_back(input);
-    //}
+    // attempt to reset state
+    for (int i = 0; i < faked.size(); ++i) {
+        input.ki.wVk = faked[i];
+        input.ki.dwFlags = 0;
+        input.type = INPUT_KEYBOARD;
+        keys.push_back(input);
+    }
 
     SendInput((UINT) keys.size(), &keys[0], sizeof(INPUT));
 }
 
+void Action::copy() {
+    sendKeys({
+        {VK_LCONTROL, 0},
+        {'C', 0},
+        {'C',KEYEVENTF_KEYUP},
+        {VK_LCONTROL, KEYEVENTF_KEYUP}}, false);
+}
+
+void Action::cut() {
+    sendKeys({
+        {VK_LCONTROL, 0},
+        {'X', 0},
+        {'X',KEYEVENTF_KEYUP},
+        {VK_LCONTROL, KEYEVENTF_KEYUP}}, false);
+}
+
+void Action::paste() {
+    sendKeys({
+        {VK_LCONTROL, 0},
+        {'V', 0},
+        {'V',KEYEVENTF_KEYUP},
+        {VK_LCONTROL, KEYEVENTF_KEYUP}}, false);
+}
+
+void Action::screenshot() {
+    sendKeys({
+        {VK_SNAPSHOT, 0},
+        {VK_SNAPSHOT, KEYEVENTF_KEYUP}}, false);
+}
+
 void Action::nextWindow() {
-    INPUT lKey[5];
-
-    // alt down                                                                        
-
-    lKey[0].ki.wScan = (WORD) 0x38;
-    lKey[0].ki.dwFlags = KEYEVENTF_SCANCODE;
-    lKey[0].type = INPUT_KEYBOARD;
-
-    // esc down                                                                        
-
-    lKey[1].ki.wScan = (WORD) 0x01;
-    lKey[1].ki.dwFlags = KEYEVENTF_SCANCODE;
-    lKey[1].type = INPUT_KEYBOARD;
-
-    // esc up                                                                          
-
-    lKey[2].ki.wScan = (WORD) 0x01;
-    lKey[2].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-    lKey[2].type = INPUT_KEYBOARD;
-
-    // alt up                                                                          
-
-    lKey[3].ki.wScan = (WORD) 0x38;
-    lKey[3].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-    lKey[3].type = INPUT_KEYBOARD;
-
-    SendInput(4, lKey, sizeof(INPUT));
+    sendKeys({
+        {VK_LMENU, 0},
+        {VK_ESCAPE, 0},
+        {VK_ESCAPE, KEYEVENTF_KEYUP},
+        {VK_LMENU, KEYEVENTF_KEYUP}}, false);
 }
 
 void Action::prevWindow() {
-    INPUT lKey[6];
-
-    // alt down                                                                        
-
-    lKey[0].ki.wScan = (WORD) 0x38;
-    lKey[0].ki.dwFlags = KEYEVENTF_SCANCODE;
-    lKey[0].type = INPUT_KEYBOARD;
-
-    // shift down                                                                      
-
-    lKey[1].ki.wScan = (WORD) 0x2a;
-    lKey[1].ki.dwFlags = KEYEVENTF_SCANCODE;
-    lKey[1].type = INPUT_KEYBOARD;
-
-    // esc down                                                                        
-
-    lKey[2].ki.wScan = (WORD) 0x01;
-    lKey[2].ki.dwFlags = KEYEVENTF_SCANCODE;
-    lKey[2].type = INPUT_KEYBOARD;
-
-    // esc up                                                                          
-
-    lKey[3].ki.wScan = (WORD) 0x01;
-    lKey[3].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-    lKey[3].type = INPUT_KEYBOARD;
-
-    // shift up                                                                        
-
-    lKey[4].ki.wScan = (WORD) 0x2a;
-    lKey[4].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-    lKey[4].type = INPUT_KEYBOARD;
-
-    // alt up                                                                          
-
-    lKey[5].ki.wScan = (WORD) 0x38;
-    lKey[5].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-    lKey[5].type = INPUT_KEYBOARD;
-
-    SendInput(6, lKey, sizeof(INPUT));
+    sendKeys({
+        {VK_LMENU, 0},
+        {VK_LSHIFT, 0},
+        {VK_ESCAPE, 0},
+        {VK_ESCAPE, KEYEVENTF_KEYUP},
+        {VK_LSHIFT, KEYEVENTF_KEYUP},
+        {VK_LMENU, KEYEVENTF_KEYUP}}, false);
 }
