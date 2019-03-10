@@ -179,20 +179,16 @@ struct key_t {
     DWORD   dwFlags;
 };
 
-static void sendKeys(const std::vector<key_t> & keysin, bool reset) {
+static void sendKeys(const std::vector<key_t> & keysin, bool resetModifiers) {
     std::vector<INPUT> keys;
     std::vector<int> faked;
 
     INPUT input;
     input.type = INPUT_KEYBOARD;
 
-    if (reset) {
-        for (int i = 8; i < 256; ++i) {
-            if (i == 0x10 || i == 0x11 || i == 0x12) {
-                // ignore VK_SHIFT, VK_CONTROL and VK_MENU.
-                // care about VK_LSHIFT, VK_RSHIFT, VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU instead
-                continue;
-            }
+    if (resetModifiers) {
+        int mods[] = {VK_LSHIFT, VK_RSHIFT, VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU};
+        for (int i = 0; i < sizeof(mods) / sizeof(mods[0]); ++i) {
             if ((::GetAsyncKeyState(i) & 0x8000) != 0) {
                 faked.push_back(i);
                 input.ki.wVk = i;
@@ -208,7 +204,7 @@ static void sendKeys(const std::vector<key_t> & keysin, bool reset) {
         keys.push_back(input);
     }
 
-    // attempt to reset state
+    // reset state of modifiers
     for (int i = 0; i < faked.size(); ++i) {
         input.ki.wVk = faked[i];
         input.ki.dwFlags = 0;
@@ -216,7 +212,7 @@ static void sendKeys(const std::vector<key_t> & keysin, bool reset) {
         keys.push_back(input);
     }
 
-    SendInput((UINT) keys.size(), &keys[0], sizeof(INPUT));
+    SendInput((UINT)keys.size(), &keys[0], sizeof(INPUT));
 }
 
 void Action::copy() {
@@ -224,7 +220,7 @@ void Action::copy() {
         {VK_LCONTROL, 0},
         {'C', 0},
         {'C',KEYEVENTF_KEYUP},
-        {VK_LCONTROL, KEYEVENTF_KEYUP}}, false);
+        {VK_LCONTROL, KEYEVENTF_KEYUP}}, true);
 }
 
 void Action::cut() {
@@ -232,7 +228,7 @@ void Action::cut() {
         {VK_LCONTROL, 0},
         {'X', 0},
         {'X',KEYEVENTF_KEYUP},
-        {VK_LCONTROL, KEYEVENTF_KEYUP}}, false);
+        {VK_LCONTROL, KEYEVENTF_KEYUP}}, true);
 }
 
 void Action::paste() {
@@ -240,13 +236,13 @@ void Action::paste() {
         {VK_LCONTROL, 0},
         {'V', 0},
         {'V',KEYEVENTF_KEYUP},
-        {VK_LCONTROL, KEYEVENTF_KEYUP}}, false);
+        {VK_LCONTROL, KEYEVENTF_KEYUP}}, true);
 }
 
 void Action::screenshot() {
     sendKeys({
         {VK_SNAPSHOT, 0},
-        {VK_SNAPSHOT, KEYEVENTF_KEYUP}}, false);
+        {VK_SNAPSHOT, KEYEVENTF_KEYUP}}, true);
 }
 
 void Action::nextWindow() {
@@ -254,7 +250,7 @@ void Action::nextWindow() {
         {VK_LMENU, 0},
         {VK_ESCAPE, 0},
         {VK_ESCAPE, KEYEVENTF_KEYUP},
-        {VK_LMENU, KEYEVENTF_KEYUP}}, false);
+        {VK_LMENU, KEYEVENTF_KEYUP}}, true);
 }
 
 void Action::prevWindow() {
@@ -264,5 +260,5 @@ void Action::prevWindow() {
         {VK_ESCAPE, 0},
         {VK_ESCAPE, KEYEVENTF_KEYUP},
         {VK_LSHIFT, KEYEVENTF_KEYUP},
-        {VK_LMENU, KEYEVENTF_KEYUP}}, false);
+        {VK_LMENU, KEYEVENTF_KEYUP}}, true);
 }
