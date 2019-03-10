@@ -723,6 +723,157 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
 
         return true;
     });
+
+    m.def("execute_in_vs", [](std::string command, int line) {
+        CLSID clsid;
+        if (FAILED(::CLSIDFromProgID(L"VisualStudio.DTE.15.0", &clsid)))
+            return false;
+
+        CComPtr<IUnknown> punk;
+        if (FAILED(::GetActiveObject(clsid, NULL, &punk)))
+            return false;
+
+        CComPtr<IDispatch> pDisp;
+        if (FAILED(punk->QueryInterface(IID_PPV_ARGS(&pDisp))))
+            return false;
+
+        DISPID dispidExecuteCommand;
+        CComBSTR strExecuteCommand(L"ExecuteCommand");
+        if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &strExecuteCommand, 1, LOCALE_USER_DEFAULT, &dispidExecuteCommand)))
+            return false;
+
+        CComVariant variant_result;
+        EXCEPINFO ExceptInfo;
+
+        CComBSTR bstrCommand(command.c_str());
+        VARIANTARG variant_arg[1];
+        VariantInit(&variant_arg[0]);
+        variant_arg[0].vt = VT_BSTR;
+        variant_arg[0].bstrVal = bstrCommand;
+        DISPPARAMS args = { variant_arg, NULL, 1, 0 };
+        if (FAILED(pDisp->Invoke(dispidExecuteCommand, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &args, &variant_result, &ExceptInfo, NULL)))
+            return false;
+
+        return true;
+    });
+
+    m.def("vs_active_document", []() {
+        py::dict dict;
+
+        CLSID clsid;
+        if (FAILED(::CLSIDFromProgID(L"VisualStudio.DTE.15.0", &clsid)))
+            return dict;
+
+        CComPtr<IUnknown> punk;
+        if (FAILED(::GetActiveObject(clsid, NULL, &punk)))
+            return dict;
+
+        CComPtr<IDispatch> pDisp;
+        if (FAILED(punk->QueryInterface(IID_PPV_ARGS(&pDisp))))
+            return dict;
+
+        CComVariant variant_result;
+        EXCEPINFO ExceptInfo;
+
+        {
+            DISPID dispidActiveDocument;
+            CComBSTR strActiveDocument(L"ActiveDocument");
+            if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &strActiveDocument, 1, LOCALE_USER_DEFAULT, &dispidActiveDocument)))
+                return dict;
+
+            DISPPARAMS args = { NULL, NULL, 0, 0 };
+            if (FAILED(pDisp->Invoke(dispidActiveDocument, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
+                return dict;
+        }
+        CComPtr<IDispatch> activeDocument = variant_result.pdispVal;
+
+        {
+            DISPID dispidSelection;
+            CComBSTR strSelection(L"Selection");
+            if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
+                return dict;
+
+            DISPPARAMS args = { NULL, NULL, 0, 0 };
+            if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
+                return dict;
+        }
+        CComPtr<IDispatch> selection = variant_result.pdispVal;
+
+        {
+            DISPID dispidCurrentLine;
+            CComBSTR strCurrentLine(L"CurrentLine");
+            if (FAILED(selection->GetIDsOfNames(IID_NULL, &strCurrentLine, 1, LOCALE_USER_DEFAULT, &dispidCurrentLine)))
+                return dict;
+
+            DISPPARAMS args = { NULL, NULL, 0, 0 };
+            if (FAILED(selection->Invoke(dispidCurrentLine, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
+                return dict;
+        }
+        dict["CurrentLine"] = variant_result.intVal;
+
+        {
+            DISPID dispidCurrentLine;
+            CComBSTR strCurrentLine(L"CurrentColumn");
+            if (FAILED(selection->GetIDsOfNames(IID_NULL, &strCurrentLine, 1, LOCALE_USER_DEFAULT, &dispidCurrentLine)))
+                return dict;
+
+            DISPPARAMS args = { NULL, NULL, 0, 0 };
+            if (FAILED(selection->Invoke(dispidCurrentLine, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
+                return dict;
+        }
+        dict["CurrentColumn"] = variant_result.intVal;
+
+        {
+            DISPID dispidSelection;
+            CComBSTR strSelection(L"Fullname");
+            if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
+                return dict;
+
+            DISPPARAMS args = { NULL, NULL, 0, 0 };
+            if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
+                return dict;
+        }
+        dict["Fullname"] = std::wstring(variant_result.bstrVal, SysStringLen(variant_result.bstrVal));
+
+        {
+            DISPID dispidSelection;
+            CComBSTR strSelection(L"Name");
+            if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
+                return dict;
+
+            DISPPARAMS args = { NULL, NULL, 0, 0 };
+            if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
+                return dict;
+        }
+        dict["Name"] = std::wstring(variant_result.bstrVal, SysStringLen(variant_result.bstrVal));
+
+        {
+            DISPID dispidSelection;
+            CComBSTR strSelection(L"Path");
+            if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
+                return dict;
+
+            DISPPARAMS args = { NULL, NULL, 0, 0 };
+            if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
+                return dict;
+        }
+        dict["Path"] = std::wstring(variant_result.bstrVal, SysStringLen(variant_result.bstrVal));
+
+        {
+            DISPID dispidSelection;
+            CComBSTR strSelection(L"Language");
+            if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
+                return dict;
+
+            DISPPARAMS args = { NULL, NULL, 0, 0 };
+            if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
+                return dict;
+        }
+        dict["Language"] = std::wstring(variant_result.bstrVal, SysStringLen(variant_result.bstrVal));
+
+        return dict;
+    });
+
 }
 
 void SettingsFile::setupMidiButton(BCLMessage & m, int button, int channel, int controller, const py::dict & config) {
