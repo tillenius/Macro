@@ -116,6 +116,93 @@ static void buildMenu(PopupMenu & menu, py::list items) {
     }
 }
 
+static bool InvokeMethod(CComPtr<IDispatch> & pDisp, const wchar_t * name, const char * argument) {
+    DISPID dispid;
+    CComBSTR str(name);
+    if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &str, 1, LOCALE_USER_DEFAULT, &dispid)))
+        return false;
+
+    CComVariant variant_result;
+    EXCEPINFO exceptInfo;
+
+    CComBSTR bstr(argument);
+    VARIANTARG variant_arg[1];
+    VariantInit(&variant_arg[0]);
+    variant_arg[0].vt = VT_BSTR;
+    variant_arg[0].bstrVal = bstr;
+    DISPPARAMS args = { variant_arg, NULL, 1, 0 };
+    if (FAILED(pDisp->Invoke(dispid, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &args, &variant_result, &exceptInfo, NULL)))
+        return false;
+    return true;
+}
+
+static bool InvokeMethod(CComPtr<IDispatch> & pDisp, const wchar_t * name, int arg1, int arg2) {
+    DISPID dispid;
+    CComBSTR str(name);
+    if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &str, 1, LOCALE_USER_DEFAULT, &dispid)))
+        return false;
+
+    CComVariant variant_result;
+    EXCEPINFO exceptInfo;
+
+    VARIANTARG variant_arg[2];
+    VariantInit(&variant_arg[0]);
+    VariantInit(&variant_arg[1]);
+    variant_arg[0].vt = VT_INT;
+    variant_arg[0].intVal = arg1;
+    variant_arg[1].vt = VT_INT;
+    variant_arg[1].intVal = arg2;
+    DISPPARAMS args = { variant_arg, NULL, 1, 0 };
+    if (FAILED(pDisp->Invoke(dispid, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &args, &variant_result, &exceptInfo, NULL)))
+        return false;
+    return true;
+}
+
+static CComPtr<IDispatch> PropertyGetIDispatch(CComPtr<IDispatch> & pDisp, const wchar_t * name) {
+    EXCEPINFO exceptInfo;
+    DISPID dispid;
+
+    CComBSTR str(name);
+    if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &str, 1, LOCALE_USER_DEFAULT, &dispid)))
+        return CComPtr<IDispatch>();
+
+    CComVariant variant_result;
+    DISPPARAMS args = { NULL, NULL, 0, 0 };
+    if (FAILED(pDisp->Invoke(dispid, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &exceptInfo, NULL)))
+        return CComPtr<IDispatch>();
+    return variant_result.pdispVal;
+}
+
+static int PropertyGetInt(CComPtr<IDispatch> & pDisp, const wchar_t * name) {
+    EXCEPINFO exceptInfo;
+    DISPID dispid;
+
+    CComBSTR str(name);
+    if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &str, 1, LOCALE_USER_DEFAULT, &dispid)))
+        return -1;
+
+    CComVariant variant_result;
+    DISPPARAMS args = { NULL, NULL, 0, 0 };
+    if (FAILED(pDisp->Invoke(dispid, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &exceptInfo, NULL)))
+        return -1;
+    return variant_result.iVal;
+}
+
+static std::wstring PropertyGetBStr(CComPtr<IDispatch> & pDisp, const wchar_t * name) {
+    EXCEPINFO exceptInfo;
+    DISPID dispid;
+
+    CComBSTR str(name);
+    if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &str, 1, LOCALE_USER_DEFAULT, &dispid)))
+        return std::wstring();
+
+    CComVariant variant_result;
+    DISPPARAMS args = { NULL, NULL, 0, 0 };
+    if (FAILED(pDisp->Invoke(dispid, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &exceptInfo, NULL)))
+        return std::wstring();
+    return std::wstring(variant_result.bstrVal, SysStringLen(variant_result.bstrVal));
+}
+
 } // namespace
 
 char buffer[4096];
@@ -662,69 +749,24 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         if (FAILED(punk->QueryInterface(IID_PPV_ARGS(&pDisp))))
             return false;
 
-        DISPID dispidExecuteCommand;
-        CComBSTR strExecuteCommand(L"ExecuteCommand");
-        if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &strExecuteCommand, 1, LOCALE_USER_DEFAULT, &dispidExecuteCommand)))
+        if (!InvokeMethod(pDisp, L"ExecuteCommand", (std::string("File.OpenFile ") + filename).c_str()))
             return false;
 
-        CComVariant variant_result;
-        EXCEPINFO ExceptInfo;
-
-        CComBSTR bstrCommand((std::string("File.OpenFile ") + filename).c_str());
-        VARIANTARG variant_arg[1];
-        VariantInit(&variant_arg[0]);
-        variant_arg[0].vt = VT_BSTR;
-        variant_arg[0].bstrVal = bstrCommand;
-        DISPPARAMS args = {variant_arg, NULL, 1, 0};
-        if (FAILED(pDisp->Invoke(dispidExecuteCommand, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &args, &variant_result, &ExceptInfo, NULL)))
+        CComPtr<IDispatch> activeDocument = PropertyGetIDispatch(pDisp, L"ActiveDocument");
+        if (!activeDocument)
             return false;
 
-        {
-            DISPID dispidActiveDocument;
-            CComBSTR strActiveDocument(L"ActiveDocument");
-            if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &strActiveDocument, 1, LOCALE_USER_DEFAULT, &dispidActiveDocument)))
-                return false;
-
-            DISPPARAMS args = {NULL, NULL, 0, 0};
-            if (FAILED(pDisp->Invoke(dispidActiveDocument, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
-                return false;
-        }
-        CComPtr<IDispatch> activeDocument = variant_result.pdispVal;
-
-        {
-            DISPID dispidSelection;
-            CComBSTR strSelection(L"Selection");
-            if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
-                return false;
-
-            DISPPARAMS args = {NULL, NULL, 0, 0};
-            if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
-                return false;
-        }
-        CComPtr<IDispatch> selection = variant_result.pdispVal;
-
-        DISPID dispidMoveToDisplayColumn;
-        CComBSTR strMoveToDisplayColumn(L"MoveToDisplayColumn");
-        if (FAILED(selection->GetIDsOfNames(IID_NULL, &strMoveToDisplayColumn, 1, LOCALE_USER_DEFAULT, &dispidMoveToDisplayColumn)))
+        CComPtr<IDispatch> selection = PropertyGetIDispatch(activeDocument, L"Selection");
+        if (!selection)
             return false;
 
-        {
-            VARIANTARG variant_arg2[2];
-            VariantInit(&variant_arg2[0]);
-            VariantInit(&variant_arg2[1]);
-            variant_arg2[0].vt = VT_INT;
-            variant_arg2[0].intVal = 1;
-            variant_arg2[1].vt = VT_INT;
-            variant_arg2[1].intVal = line;
-            DISPPARAMS argsMove = {variant_arg2, NULL, 2, 0};
-            if (FAILED(selection->Invoke(dispidMoveToDisplayColumn, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &argsMove, &variant_result, &ExceptInfo, NULL)))
-                return false;
-        }
+        if (!InvokeMethod(pDisp, L"MoveToDisplayColumn", 1, line))
+            return false;
 
         return true;
     });
 
-    m.def("execute_in_vs", [](std::string command, int line) {
+    m.def("execute_in_vs", [](std::string command) {
         CLSID clsid;
         if (FAILED(::CLSIDFromProgID(L"VisualStudio.DTE.15.0", &clsid)))
             return false;
@@ -737,21 +779,7 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         if (FAILED(punk->QueryInterface(IID_PPV_ARGS(&pDisp))))
             return false;
 
-        DISPID dispidExecuteCommand;
-        CComBSTR strExecuteCommand(L"ExecuteCommand");
-        if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &strExecuteCommand, 1, LOCALE_USER_DEFAULT, &dispidExecuteCommand)))
-            return false;
-
-        CComVariant variant_result;
-        EXCEPINFO ExceptInfo;
-
-        CComBSTR bstrCommand(command.c_str());
-        VARIANTARG variant_arg[1];
-        VariantInit(&variant_arg[0]);
-        variant_arg[0].vt = VT_BSTR;
-        variant_arg[0].bstrVal = bstrCommand;
-        DISPPARAMS args = { variant_arg, NULL, 1, 0 };
-        if (FAILED(pDisp->Invoke(dispidExecuteCommand, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &args, &variant_result, &ExceptInfo, NULL)))
+        if (!InvokeMethod(pDisp, L"ExecuteCommand", command.c_str()))
             return false;
 
         return true;
@@ -772,104 +800,20 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         if (FAILED(punk->QueryInterface(IID_PPV_ARGS(&pDisp))))
             return dict;
 
-        CComVariant variant_result;
-        EXCEPINFO ExceptInfo;
+        CComPtr<IDispatch> activeDocument = PropertyGetIDispatch(pDisp, L"ActiveDocument");
+        if (!activeDocument)
+            return dict;
 
-        {
-            DISPID dispidActiveDocument;
-            CComBSTR strActiveDocument(L"ActiveDocument");
-            if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &strActiveDocument, 1, LOCALE_USER_DEFAULT, &dispidActiveDocument)))
-                return dict;
+        CComPtr<IDispatch> selection = PropertyGetIDispatch(activeDocument, L"Selection");
+        if (!selection)
+            return dict;
 
-            DISPPARAMS args = { NULL, NULL, 0, 0 };
-            if (FAILED(pDisp->Invoke(dispidActiveDocument, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
-                return dict;
-        }
-        CComPtr<IDispatch> activeDocument = variant_result.pdispVal;
-
-        {
-            DISPID dispidSelection;
-            CComBSTR strSelection(L"Selection");
-            if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
-                return dict;
-
-            DISPPARAMS args = { NULL, NULL, 0, 0 };
-            if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
-                return dict;
-        }
-        CComPtr<IDispatch> selection = variant_result.pdispVal;
-
-        {
-            DISPID dispidCurrentLine;
-            CComBSTR strCurrentLine(L"CurrentLine");
-            if (FAILED(selection->GetIDsOfNames(IID_NULL, &strCurrentLine, 1, LOCALE_USER_DEFAULT, &dispidCurrentLine)))
-                return dict;
-
-            DISPPARAMS args = { NULL, NULL, 0, 0 };
-            if (FAILED(selection->Invoke(dispidCurrentLine, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
-                return dict;
-        }
-        dict["CurrentLine"] = variant_result.intVal;
-
-        {
-            DISPID dispidCurrentLine;
-            CComBSTR strCurrentLine(L"CurrentColumn");
-            if (FAILED(selection->GetIDsOfNames(IID_NULL, &strCurrentLine, 1, LOCALE_USER_DEFAULT, &dispidCurrentLine)))
-                return dict;
-
-            DISPPARAMS args = { NULL, NULL, 0, 0 };
-            if (FAILED(selection->Invoke(dispidCurrentLine, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
-                return dict;
-        }
-        dict["CurrentColumn"] = variant_result.intVal;
-
-        {
-            DISPID dispidSelection;
-            CComBSTR strSelection(L"Fullname");
-            if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
-                return dict;
-
-            DISPPARAMS args = { NULL, NULL, 0, 0 };
-            if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
-                return dict;
-        }
-        dict["Fullname"] = std::wstring(variant_result.bstrVal, SysStringLen(variant_result.bstrVal));
-
-        {
-            DISPID dispidSelection;
-            CComBSTR strSelection(L"Name");
-            if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
-                return dict;
-
-            DISPPARAMS args = { NULL, NULL, 0, 0 };
-            if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
-                return dict;
-        }
-        dict["Name"] = std::wstring(variant_result.bstrVal, SysStringLen(variant_result.bstrVal));
-
-        {
-            DISPID dispidSelection;
-            CComBSTR strSelection(L"Path");
-            if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
-                return dict;
-
-            DISPPARAMS args = { NULL, NULL, 0, 0 };
-            if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
-                return dict;
-        }
-        dict["Path"] = std::wstring(variant_result.bstrVal, SysStringLen(variant_result.bstrVal));
-
-        {
-            DISPID dispidSelection;
-            CComBSTR strSelection(L"Language");
-            if (FAILED(activeDocument->GetIDsOfNames(IID_NULL, &strSelection, 1, LOCALE_USER_DEFAULT, &dispidSelection)))
-                return dict;
-
-            DISPPARAMS args = { NULL, NULL, 0, 0 };
-            if (FAILED(activeDocument->Invoke(dispidSelection, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &ExceptInfo, NULL)))
-                return dict;
-        }
-        dict["Language"] = std::wstring(variant_result.bstrVal, SysStringLen(variant_result.bstrVal));
+        dict["CurrentLine"] = PropertyGetInt(selection, L"CurrentLine");
+        dict["CurrentColumn"] = PropertyGetInt(selection, L"CurrentColumn");
+        dict["Fullname"] = PropertyGetBStr(activeDocument, L"Fullname");
+        dict["Name"] = PropertyGetBStr(activeDocument, L"Name");
+        dict["Path"] = PropertyGetBStr(activeDocument, L"Path");
+        dict["Language"] = PropertyGetBStr(activeDocument, L"Language");
 
         return dict;
     });
