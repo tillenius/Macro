@@ -95,7 +95,7 @@ bool ContextMenu::handleCommand(WORD id, HINSTANCE hInstance, HWND hWnd) {
             return true;
         case MENU_INACTIVATE:
             g_app->inactivate();
-            CheckMenuItem(m_hMenu, MENU_INACTIVATE, g_app->m_state == MacroApp::recordState_t::INACTIVE ? MF_UNCHECKED : MF_CHECKED);
+            CheckMenuItem(m_hMenu, MENU_INACTIVATE, g_app->m_state == MacroApp::recordState_t::INACTIVE ? MF_CHECKED : MF_UNCHECKED );
             return true;
         case MENU_COUNTERSETTINGS:
             g_app->m_settingsDlg.show(hInstance, hWnd);
