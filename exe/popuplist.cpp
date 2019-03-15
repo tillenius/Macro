@@ -56,17 +56,20 @@ INT_PTR CALLBACK popupListWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM
 
 } // namespace
 
-int PopupList::exec(const std::vector<std::string> & items) {
+int PopupList::exec(const std::vector<std::string> & items, bool switchBack) {
     static bool busy = false;
     if (busy) {
         return -1;
     }
     busy = true;
-    HWND prevhwnd = GetForegroundWindow();
+    HWND prevhwnd = NULL;
+    if (switchBack) {
+        prevhwnd = GetForegroundWindow();
+    }
     const int cmd = (int) DialogBoxParam(g_app->m_hInstance, MAKEINTRESOURCE(IDD_LISTDIALOG), g_app->m_hWnd, popupListWndProc, (LPARAM) &items);
-    DWORD res = GetLastError();
-    static volatile DWORD dd = res;
-    SwitchToThisWindow(prevhwnd, TRUE);
+    if (prevhwnd != NULL) {
+        SwitchToThisWindow(prevhwnd, TRUE);
+    }
     busy = false;
     return cmd;
 }

@@ -453,14 +453,17 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         }
         return menu.exec();
     });
+
     m.def("menu", [](py::list items) -> int {
         PopupMenu menu;
         buildMenu(menu, items);
         return menu.exec();
     });
-    m.def("list", [](const std::vector<std::string> & items) -> int {
-        return PopupList::exec(items);
-    });
+
+    m.def("list", [](const std::vector<std::string> & items, bool switchBack) -> int {
+        return PopupList::exec(items, switchBack);
+    }, py::arg("items"), py::arg("switch_back") = true);
+
     m.def("notify", [](const std::string & message) {
         return g_app->m_systray.Notification(message.c_str());
     });

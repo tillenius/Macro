@@ -6,5 +6,5 @@
 
 class PopupList {
 public:
-    static int exec(const std::vector<std::string> & items);
+    static int exec(const std::vector<std::string> & items, bool switchBack);
 };
