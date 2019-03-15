@@ -57,7 +57,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             g_app->deferredKey(wParam, lParam);
             return 0;
         case WM_USER_RELOAD:
-            g_app->reload(g_app->m_hotkeys.m_enabled);
+            g_app->reload(true);
             return 0;
         case WM_COMMAND:
             if (HIWORD(wParam) == 0) {
@@ -75,9 +75,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             return 0;
         case WM_CREATE: {
             g_app = std::make_unique<MacroApp>(g_hInstance, hWnd);
-            if (!g_app->reload(true)) {
-                g_app->m_systray.Icon(IDI_ICON1);
-            }
+            g_app->m_systray.Icon(IDI_ICON4);
+            g_app->reload(true);
             return 0;
         }
         case WM_DESTROY:
