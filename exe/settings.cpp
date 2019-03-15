@@ -477,7 +477,7 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
     m.def("switch_to_this_window", [](py::object hwnd_, bool alttab) {
         HWND hwnd = pyHWND(hwnd_);
         ::SwitchToThisWindow(hwnd, alttab ? TRUE : FALSE);
-    });
+    }, py::arg("hwnd"), py::arg("alttab") = true);
 
     m.def("find_window", [](std::string className, std::string windowName) {
         return pyHWND(::FindWindow(className.empty() ? NULL : className.c_str(), windowName.empty() ? NULL : windowName.c_str()));
