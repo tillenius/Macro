@@ -976,6 +976,7 @@ bool SettingsFile::load() {
             }
         }
     } catch (const std::exception & ex) {
+        SwitchToThisWindow(g_app->m_hWnd, TRUE);
         MessageBox(0, ex.what(), 0, MB_OK);
         return false;
     }

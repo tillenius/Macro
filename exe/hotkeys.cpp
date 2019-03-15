@@ -1,6 +1,7 @@
 #include "hotkeys.h"
 #include "action.h"
 #include "keynames.h"
+#include "main.h"
 
 Hotkeys::~Hotkeys() {
     if (m_enabled)
@@ -30,4 +31,14 @@ void Hotkeys::disable() {
         UnregisterHotKey(m_hWnd, i);
 
     m_enabled = false;
+}
+
+void Hotkeys::execute(int ID) {
+    try {
+        m_hotkeys[ID].fn();
+    }
+    catch (const std::exception & ex) {
+        SwitchToThisWindow(g_app->m_hWnd, TRUE);
+        MessageBox(0, ex.what(), 0, MB_OK);
+    }
 }

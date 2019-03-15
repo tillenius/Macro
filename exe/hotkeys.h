@@ -30,11 +30,5 @@ public:
 
     void enable(HWND hWnd);
     void disable();
-    void execute(int ID) {
-        try {
-            m_hotkeys[ID].fn();
-        } catch (const std::exception & ex) {
-            MessageBox(0, ex.what(), 0, MB_OK);
-        }
-    }
+    void execute(int ID);
 };
