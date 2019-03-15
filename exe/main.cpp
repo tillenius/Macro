@@ -8,6 +8,8 @@
 
 #include <windows.h>
 #include <memory>
+#include <fstream>
+#include <shlobj.h>
 
 HINSTANCE g_hInstance;
 std::unique_ptr<MacroApp> g_app;
@@ -73,6 +75,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             return 0;
         case WM_CREATE: {
             g_app = std::make_unique<MacroApp>(g_hInstance, hWnd);
+            if (!g_app->reload(true)) {
+                g_app->m_systray.Icon(IDI_ICON1);
+            }
             return 0;
         }
         case WM_DESTROY:
@@ -157,11 +162,25 @@ DWORD WINAPI FileChangeNotificationThread(LPVOID lpParam) {
 }
 
 MacroApp::MacroApp(HINSTANCE hInstance, HWND hWnd) : m_hInstance(hInstance), m_hWnd(hWnd), m_systray(hInstance, hWnd) {
-    if (!reload(true)) {
-        m_systray.Icon(IDI_ICON1);
-    }
     static NotificationThreadData data;
-    data.notificationHandle = FindFirstChangeNotificationW(m_settings.m_settingsPath.c_str(), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE);
+    WCHAR * filepath;
+    if (!SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, NULL, &filepath))) {
+        MessageBox(0, "SHGetKnownFolderPath() failed.", 0, MB_OK);
+        return;
+    }
+    m_settingsPath = filepath;
+    m_settingsPath += L"\\Macro";
+    CreateDirectoryW(m_settingsPath.c_str(), NULL);
+    m_settingsFile = m_settingsPath + L"\\macro-settings.py";
+
+    if (!fileExists(m_settingsFile.c_str())) {
+        std::ofstream out(m_settingsFile.c_str());
+        extern const char * DEFAULT_CONFIG_FILE;
+        out << DEFAULT_CONFIG_FILE;
+        out.close();
+    }
+
+    data.notificationHandle = FindFirstChangeNotificationW(m_settingsPath.c_str(), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE);
     if (data.notificationHandle != INVALID_HANDLE_VALUE) {
         data.hwnd = m_hWnd;
         CreateThread(NULL, 0, FileChangeNotificationThread, &data, 0, NULL);
@@ -327,7 +346,7 @@ void MacroApp::resetCounter() {
 }
 
 void MacroApp::editConfigFile() {
-    const std::string file = wstr_to_utf8(m_settings.m_settingsFile);
+    const std::string file = wstr_to_utf8(m_settingsFile);
 
     PROCESS_INFORMATION lpProcessInfo{0};
     STARTUPINFO siStartupInfo{0};

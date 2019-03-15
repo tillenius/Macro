@@ -53,5 +53,56 @@ IDI_ICON3               ICON                    "icon3.ico"
 
 IDI_ICON4               ICON                    "icon4.ico"
 
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO
+BEGIN
+    IDD_LISTDIALOG, DIALOG
+    BEGIN
+    END
+
+    IDD_DIALOG_COUNTER, DIALOG
+    BEGIN
+    END
+
+    IDD_COMBODIALOG, DIALOG
+    BEGIN
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// AFX_DIALOG_LAYOUT
+//
+
+IDD_LISTDIALOG AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_COMBODIALOG AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
 #endif    // English (United States) resources
 /////////////////////////////////////////////////////////////////////////////
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

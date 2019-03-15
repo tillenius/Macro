@@ -18,8 +18,6 @@ public:
     UINT m_recbutton = VK_SCROLL;
     UINT m_playbutton = VK_OEM_5;
     std::string m_midiInterface;
-    std::wstring m_settingsPath;
-    std::wstring m_settingsFile;
     int m_midiChannel = 1;
 };
 

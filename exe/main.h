@@ -30,6 +30,8 @@ public:
     std::vector<int> m_waitFor;
     enum class recordState_t {IDLE, RECORD, INACTIVE, WAIT};
     recordState_t m_state = recordState_t::IDLE;
+    std::wstring m_settingsPath;
+    std::wstring m_settingsFile;
 
     MacroApp(HINSTANCE hInstance, HWND hWnd);
     ~MacroApp();

@@ -6,7 +6,6 @@
 #include "popupmenu.h"
 #include "popuplist.h"
 #include "resource.h"
-#include <iostream>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -887,24 +886,7 @@ bool SettingsFile::load() {
         throw std::exception((std::string("Too many midi actions in channel ") + std::to_string(channel) + ".").c_str());
     };
 
-    WCHAR * filepath;
-    if (!SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, NULL, &filepath))) {
-        MessageBox(0, "SHGetKnownFolderPath() failed.", 0, MB_OK);
-        return false;
-    }
-
-    m_settings.m_settingsPath = filepath;
-    m_settings.m_settingsPath += L"\\Macro";
-    CreateDirectoryW(m_settings.m_settingsPath.c_str(), NULL);
-    py::module::import("sys").attr("path").cast<py::list>().append(wstr_to_utf8(m_settings.m_settingsPath).c_str());
-    m_settings.m_settingsFile = m_settings.m_settingsPath + L"\\macro-settings.py";
- 
-    if (!fileExists(m_settings.m_settingsFile.c_str())) {
-        std::ofstream out(m_settings.m_settingsFile.c_str());
-        extern const char * DEFAULT_CONFIG_FILE;
-        out << DEFAULT_CONFIG_FILE;
-        out.close();
-    }
+    py::module::import("sys").attr("path").cast<py::list>().append(wstr_to_utf8(g_app->m_settingsPath).c_str());
 
     try {
         py::module settings = py::module::import("macro-settings");
