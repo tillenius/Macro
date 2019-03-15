@@ -687,7 +687,11 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
     });
 
     m.def("main_window_from_pid", [](DWORD pid) {
-        return Action::getMainWindowFromPid(pid);
+        return pyHWND(Action::getMainWindowFromPid(pid));
+    });
+
+    m.def("main_window_from_thread", [](DWORD threadid) {
+        return pyHWND(Action::getMainWindowFromThread(threadid));
     });
 
     // Dialogs
