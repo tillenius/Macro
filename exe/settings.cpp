@@ -858,6 +858,7 @@ bool SettingsFile::load() {
     interp.reset();
     interp = std::make_unique<py::scoped_interpreter>();
     py::module::import("sys").attr("dont_write_bytecode") = true;
+    py::module::import("sys").attr("path").cast<py::list>().append(wstr_to_utf8(g_app->m_settingsPath).c_str());
 
     m_bclMessage("$rev R1");
     m_bclMessage("$preset");
@@ -882,8 +883,6 @@ bool SettingsFile::load() {
         }
         throw std::exception((std::string("Too many midi actions in channel ") + std::to_string(channel) + ".").c_str());
     };
-
-    py::module::import("sys").attr("path").cast<py::list>().append(wstr_to_utf8(g_app->m_settingsPath).c_str());
 
     try {
         py::module settings = py::module::import("macro-settings");
