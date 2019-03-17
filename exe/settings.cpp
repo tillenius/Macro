@@ -859,9 +859,6 @@ bool SettingsFile::load() {
     interp = std::make_unique<py::scoped_interpreter>();
     py::module::import("sys").attr("dont_write_bytecode") = true;
 
-    py::dict global = py::dict();
-    py::dict local = py::dict();
-
     m_bclMessage("$rev R1");
     m_bclMessage("$preset");
 
