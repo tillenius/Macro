@@ -33,18 +33,18 @@ void SysTray::Icon(int nIcon) {
     }
 }
 
-void SysTray::Notification(const char * message) {
-    NOTIFYICONDATA iconData;
+void SysTray::Notification(const wchar_t * message) {
+    NOTIFYICONDATAW iconData;
 
-    iconData.cbSize = sizeof(NOTIFYICONDATA);
+    iconData.cbSize = sizeof(NOTIFYICONDATAW);
     iconData.uFlags = NIF_INFO;
     iconData.uID = 0;
     iconData.hWnd = hWnd;
     iconData.szInfoTitle[0] = '\0';
     iconData.szInfo[0] = '\0';
     iconData.uTimeout = 0;
-    Shell_NotifyIcon(NIM_MODIFY, &iconData);
-    strcpy_s(iconData.szInfoTitle, "Macro");
-    strncpy_s(iconData.szInfo, message, sizeof(iconData.szInfo)/sizeof(iconData.szInfo[0]));
-    Shell_NotifyIcon(NIM_MODIFY, &iconData);
+    Shell_NotifyIconW(NIM_MODIFY, &iconData);
+    wcscpy_s(iconData.szInfoTitle, L"Macro");
+    wcsncpy_s(iconData.szInfo, message, sizeof(iconData.szInfo)/sizeof(iconData.szInfo[0]));
+    Shell_NotifyIconW(NIM_MODIFY, &iconData);
 }

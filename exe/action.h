@@ -6,7 +6,8 @@
 
 class Action {
 public:
-    static bool activate(const std::string & exeName, const std::string & windowName, const std::string & className);
+	static HWND findWindow(const std::string& exeName, const std::string& windowName, const std::string& className);
+	static bool activate(const std::string & exeName, const std::string & windowName, const std::string & className);
     static void run(const std::string & appName, const std::string & cmdLine, const std::string & currDir);
     static void activateOrRun(const std::string & exeName, const std::string & windowName, const std::string & className,
                               const std::string & appName, const std::string & cmdLine, const std::string & currDir);
@@ -17,6 +18,7 @@ public:
     static void paste();
     static void screenshot();
 
+	static bool isMainWindow(HWND hWnd);
     static void getThreadIds(DWORD pid, std::vector<DWORD> & threadids);
     static void getWindowsFromThread(DWORD threadid, std::vector<HWND> & hwnds);
     static void getPidsFromExe(const std::string & exeName, std::vector<DWORD> & pids);

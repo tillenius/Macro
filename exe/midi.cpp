@@ -1,4 +1,5 @@
 #include "midi.h"
+#include "main.h"
 #include <string>
 #include <vector>
 
@@ -116,8 +117,14 @@ void Midi::receive(int channel, int controller, int data) {
         return;
     }
 
-    entry.callback(data + entry.hiData);
-    entry.hiData = 0;
+	try {
+		entry.callback(data + entry.hiData);
+	}
+	catch (const std::exception & ex) {
+		SwitchToThisWindow(g_app->m_hWnd, TRUE);
+		MessageBox(0, ex.what(), 0, MB_OK);
+	}
+	entry.hiData = 0;
 }
 
 void Midi::add(int channel, int controller, std::function<void(int)> callback) {

@@ -47,15 +47,11 @@ void Action::getWindowsFromExe(const std::string & exeName, std::vector<HWND> & 
     return;
 }
 
-namespace {
-
-static bool isMainWindow(HWND hWnd) {
+bool Action::isMainWindow(HWND hWnd) {
     if ((GetWindowLong(hWnd, GWL_STYLE) & WS_VISIBLE) == 0) {
         return false;
     }
     return GetAncestor(hWnd, GA_ROOT) == hWnd;
-}
-
 }
 
 HWND Action::getMainWindowFromThread(DWORD threadid) {
@@ -81,7 +77,7 @@ HWND Action::getMainWindowFromPid(DWORD pid) {
     return NULL;
 }
 
-static HWND getHWnd(const std::string & exeName, const std::string & windowName, const std::string & className) {
+HWND Action::findWindow(const std::string & exeName, const std::string & windowName, const std::string & className) {
     std::vector<HWND> hwnds;
     if (exeName == "*") {
         for (WindowIterator i; !i.end(); ++i)
@@ -140,7 +136,7 @@ static HWND getHWnd(const std::string & exeName, const std::string & windowName,
 }
 
 bool Action::activate(const std::string & exeName, const std::string & windowName, const std::string & className) {
-    HWND hWnd = getHWnd(exeName, windowName, className);
+    HWND hWnd = findWindow(exeName, windowName, className);
     if (hWnd != NULL) {
         SwitchToThisWindow(hWnd, TRUE);
         return true;

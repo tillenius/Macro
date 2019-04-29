@@ -22,6 +22,18 @@
 
 namespace py = pybind11;
 
+std::wstring utf8_to_wstr(const std::string & str) {
+	size_t charsNeeded = ::MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), NULL, 0);
+	if (charsNeeded == 0)
+		return std::wstring();
+
+	std::vector<wchar_t> buffer(charsNeeded);
+	int charsConverted = ::MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), &buffer[0], buffer.size());
+	if (charsConverted == 0)
+		return std::wstring();
+
+	return std::wstring(&buffer[0], charsConverted);
+}
 namespace {
 
 static constexpr int MAX_CONTROLLERS = 127;
@@ -378,6 +390,9 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         HGLOBAL hglbCopy = GlobalAlloc(GMEM_MOVEABLE, text.length() + 1);
         if (hglbCopy != NULL) {
             char * buffer = (char *) GlobalLock(hglbCopy);
+			if (buffer == nullptr) {
+				return false;
+			}
             memcpy(buffer, text.c_str(), text.length());
             buffer[text.length()] = 0;
             GlobalUnlock(hglbCopy);
@@ -430,7 +445,11 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
 
     // Activate and run programs
 
-    m.def("activate", [](const std::string & exeName, const std::string & windowName, const std::string & className) {
+	m.def("find_window", [](const std::string& exeName, const std::string& windowName, const std::string& className) {
+		Action::findWindow(exeName, windowName, className);
+	});
+	
+	m.def("activate", [](const std::string & exeName, const std::string & windowName, const std::string & className) {
         Action::activate(exeName, windowName, className);
     });
 
@@ -463,7 +482,7 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         return PopupList::exec(items, switchBack);
     }, py::arg("items"), py::arg("switch_back") = true);
 
-    m.def("notify", [](const std::string & message) {
+    m.def("notify", [](const std::wstring & message) {
         return g_app->m_systray.Notification(message.c_str());
     });
 
@@ -505,41 +524,47 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
 
         HANDLE process = ::OpenProcess(PROCESS_VM_READ | PROCESS_VM_OPERATION, FALSE, pid);
         if (process == NULL) {
-            return std::string();
+            return std::wstring();
         }
 
-        int count = LOWORD(SendMessage(hwnd, SB_GETTEXTLENGTH, index, 0));
+        int count = LOWORD(SendMessage(hwnd, SB_GETTEXTLENGTHW, index, 0));
         if (count <= 0) {
             CloseHandle(process);
-            return std::string();
+            return std::wstring();
         }
 
-        char * buffer = (char *) VirtualAllocEx(process, NULL, count + 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        wchar_t * buffer = (wchar_t*) VirtualAllocEx(process, NULL, sizeof(wchar_t) * (count + 2), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (buffer == NULL) {
             CloseHandle(process);
-            return std::string();
+            return std::wstring();
         }
 
-        SendMessage(hwnd, SB_GETTEXT, index, (LPARAM) buffer);
+        SendMessage(hwnd, SB_GETTEXTW, index, (LPARAM) buffer);
 
-        std::vector<char> memLocal(count + 2);
-        if (::ReadProcessMemory(process, buffer, &memLocal[0], memLocal.size(), NULL) == 0) {
-            ::VirtualFreeEx(process, buffer, count + 2, MEM_DECOMMIT | MEM_RELEASE);
+        std::vector<wchar_t> memLocal(count + 2);
+		ZeroMemory(&memLocal[0], sizeof(wchar_t)* memLocal.size());
+        if (::ReadProcessMemory(process, buffer, &memLocal[0], sizeof(wchar_t) * count, NULL) == 0) {
+            ::VirtualFreeEx(process, buffer, 0, MEM_RELEASE);
             CloseHandle(process);
-            return std::string();
+            return std::wstring();
         }
 
-        ::VirtualFreeEx(process, buffer, count + 2, MEM_DECOMMIT | MEM_RELEASE);
+        ::VirtualFreeEx(process, buffer, 0, MEM_RELEASE);
         CloseHandle(process);
 
-        return std::string(&memLocal[0]);
+		return std::wstring(&memLocal[0]);
     });
 
     m.def("get_current_window", []() {
         return pyHWND(::GetAncestor(::GetForegroundWindow(), GA_ROOT));
     });
 
-    m.def("get_foreground_window", []() {
+	m.def("get_ancestor", [](py::object hwnd_, int flags) {
+		HWND hwnd = pyHWND(hwnd_);
+		return pyHWND(::GetAncestor(hwnd, flags));
+	});
+	
+	m.def("get_foreground_window", []() {
         return pyHWND(::GetForegroundWindow());
     });
 
@@ -565,8 +590,13 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
 
     m.def("is_main_window", [](py::object hwnd_) {
         HWND hwnd = pyHWND(hwnd_);
-        return (GetWindowLong(hwnd, GWL_STYLE) & WS_VISIBLE) != 0;
+        return Action::isMainWindow(hwnd);
     });
+
+	m.def("is_visible", [](py::object hwnd_) {
+		HWND hwnd = pyHWND(hwnd_);
+		return (GetWindowLong(hwnd, GWL_STYLE) & WS_VISIBLE) != 0;
+	});
 
     m.def("get_class_name", [](py::object hwnd_) {
         HWND hwnd = pyHWND(hwnd_);
