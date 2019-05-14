@@ -32,6 +32,9 @@ config = {
     # which midi interface to use (both input and b-control output)
     "midiinterface": "BCR2000",
 
+    # which midi interface to use (both input and b-control output)
+    "envdte": "VisualStudio.DTE",
+
     # default channel, when none is specified explicitly
     "midichannel": 1
 }

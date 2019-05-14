@@ -28,7 +28,7 @@ std::wstring utf8_to_wstr(const std::string & str) {
 		return std::wstring();
 
 	std::vector<wchar_t> buffer(charsNeeded);
-	int charsConverted = ::MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), &buffer[0], buffer.size());
+	size_t charsConverted = ::MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), &buffer[0], (int)buffer.size());
 	if (charsConverted == 0)
 		return std::wstring();
 
@@ -774,7 +774,7 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
 
     m.def("open_in_vs", [](std::string filename, int line) {
         CLSID clsid;
-        if (FAILED(::CLSIDFromProgID(L"VisualStudio.DTE.15.0", &clsid)))
+        if (FAILED(::CLSIDFromProgID(g_app->m_settings.m_envdte.c_str(), &clsid)))
             return false;
 
         CComPtr<IUnknown> punk;
@@ -804,7 +804,7 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
 
     m.def("execute_in_vs", [](std::string command) {
         CLSID clsid;
-        if (FAILED(::CLSIDFromProgID(L"VisualStudio.DTE.15.0", &clsid)))
+        if (FAILED(::CLSIDFromProgID(g_app->m_settings.m_envdte.c_str(), &clsid)))
             return false;
 
         CComPtr<IUnknown> punk;
@@ -825,7 +825,7 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         py::dict dict;
 
         CLSID clsid;
-        if (FAILED(::CLSIDFromProgID(L"VisualStudio.DTE.15.0", &clsid)))
+        if (FAILED(::CLSIDFromProgID(g_app->m_settings.m_envdte.c_str(), &clsid)))
             return dict;
 
         CComPtr<IUnknown> punk;
@@ -923,7 +923,8 @@ bool SettingsFile::load() {
             parseConfig(config, "counter_hex", m_settings.m_counterHex);
             parseConfig(config, "conter_start", m_settings.m_counter);
             parseConfig(config, "midiinterface", m_settings.m_midiInterface);
-            parseConfig(config, "midichannel", m_settings.m_midiChannel);
+			parseConfig(config, "envdte", m_settings.m_envdte);
+			parseConfig(config, "midichannel", m_settings.m_midiChannel);
             parseKeyConfig(config, "rec", m_settings.m_recbutton);
             parseKeyConfig(config, "play", m_settings.m_playbutton);
         }

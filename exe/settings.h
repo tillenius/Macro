@@ -17,8 +17,9 @@ public:
     bool m_counterHex = false;
     UINT m_recbutton = VK_SCROLL;
     UINT m_playbutton = VK_OEM_5;
-    std::string m_midiInterface;
-    int m_midiChannel = 1;
+    std::string m_midiInterface = "BCR2000";
+	std::wstring m_envdte = L"VisualStudio.DTE";
+	int m_midiChannel = 1;
 };
 
 class SettingsFile {
