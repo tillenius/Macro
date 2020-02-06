@@ -5,14 +5,14 @@
 
 #pragma comment(lib, "winmm.lib")
 
-bool Midi::init(const std::string & midiDeviceName) {
+bool Midi::init(HWND hwnd, const std::string & midiDeviceName) {
     stop();
     const UINT num_in_devs = midiInGetNumDevs();
     for (UINT i = 0; i < num_in_devs; i++) {
         MIDIINCAPS mic;
         if (!midiInGetDevCaps(i, &mic, sizeof(MIDIINCAPS))) {
             if (midiDeviceName.empty() || midiDeviceName == mic.szPname) {
-                MMRESULT res = midiInOpen(&m_hMidiIn, i, reinterpret_cast<DWORD_PTR>(MidiInProc), reinterpret_cast<DWORD_PTR>(this), CALLBACK_FUNCTION);
+                MMRESULT res = midiInOpen(&m_hMidiIn, i, reinterpret_cast<DWORD_PTR>(hwnd), reinterpret_cast<DWORD_PTR>(this), CALLBACK_WINDOW);
                 if (res != 0) {
                     m_hMidiIn = NULL;
                     return false;
@@ -94,6 +94,25 @@ bool Midi::sendSysex(int size, char * data) {
     return true;
 }
 
+void Midi::receive(DWORD dwParam1) {
+    static constexpr int CHANNEL_MASK = 0x0f;
+    static constexpr int TYPE_MASK = 0xf0;
+    static constexpr int TYPE_CONTROL_CHANGE = 0xb;
+    const int type = ( dwParam1 & TYPE_MASK ) >> 4;
+    const int channel = 1 + dwParam1 & CHANNEL_MASK;
+    const int controller = (dwParam1 & 0xff00) >> 8;
+    const int data = (dwParam1 & 0xff0000) >> 16;
+    if (m_debug) {
+        OutputDebugString((std::string("MIDI: MIM_DATA type = ") + std::to_string(type) +
+                            " channel = " + std::to_string(channel) +
+                            " controller=" + std::to_string(controller) +
+                            " data=" + std::to_string(data) + "\n").c_str());
+    }
+    if (type == TYPE_CONTROL_CHANGE) {
+        receive(channel, controller, data);
+    }
+}
+
 void Midi::receive(int channel, int controller, int data) {
     auto it = m_channelMap.find(channel);
     if (it == m_channelMap.end()) {
@@ -129,28 +148,4 @@ void Midi::receive(int channel, int controller, int data) {
 
 void Midi::add(int channel, int controller, std::function<void(int)> callback) {
     m_channelMap[channel][controller] = Entry(callback);
-}
-
-void CALLBACK Midi::MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
-    Midi * midi = (Midi *) dwInstance;
-    if (wMsg == MIM_DATA) {
-        const int CHANNEL_MASK = 0x0f;
-        const int TYPE_MASK = 0xf0;
-        const int TYPE_CONTROL_CHANGE = 0xb;
-        const int type = ( dwParam1 & TYPE_MASK ) >> 4;
-        const int channel = 1 + dwParam1 & CHANNEL_MASK;
-        const int controller = (dwParam1 & 0xff00) >> 8;
-        const int data = (dwParam1 & 0xff0000) >> 16;
-        if (midi->m_debug) {
-            OutputDebugString((std::string("MIDI: MIM_DATA type = ") + std::to_string(type) +
-                               " channel = " + std::to_string(channel) +
-                               " controller=" + std::to_string(controller) +
-                               " data=" + std::to_string(data) + "\n").c_str());
-        }
-        if (type == TYPE_CONTROL_CHANGE) {
-            midi->receive(channel, controller, data);
-        }
-    } else if (midi->m_debug) {
-        OutputDebugString((std::string("MIDI: msg=") + std::to_string(wMsg) + " param1=" + std::to_string(dwParam1) + " param2=" + std::to_string(dwParam2) + "\n").c_str());
-    }
 }

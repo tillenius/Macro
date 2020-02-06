@@ -48,17 +48,18 @@ public:
     bool m_midiOutStarted = false;
     bool m_debug = false;
 
-    static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2);
+    //static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2);
 
     Midi & operator=(const Midi &) = delete;
     Midi(const Midi &) = delete;
     Midi() = default;
 
     ~Midi();
-    bool init(const std::string & midiDeviceName);
+    bool init(HWND hwnd, const std::string & midiDeviceName);
     void stop();
     void add(int channel, int controller, std::function<void(int)> callback);
     void receive(int channel, int controller, int data);
+    void receive(DWORD dwParam);
     bool sendControlChange(char channel, char controller, char value);
     bool sendSysex(int size, char * data);
     bool sendMessage(BCLMessage & msg) { return sendSysex((int) msg.data.size(), &msg.data[0]); }

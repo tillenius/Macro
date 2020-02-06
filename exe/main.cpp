@@ -59,6 +59,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         case WM_USER_RELOAD:
             g_app->reload(true);
             return 0;
+        case MM_MIM_DATA:
+            g_app->m_midi.receive((DWORD) lParam);
+            return 0;
         case WM_COMMAND:
             if (HIWORD(wParam) == 0) {
                 if (g_app->m_contextMenu.handleCommand(LOWORD(wParam), g_hInstance, hWnd)) {
@@ -217,7 +220,7 @@ bool MacroApp::reload(bool enable) {
     }
 
     // enable new midi config
-    m_midi.init(m_settings.m_midiInterface);
+    m_midi.init(m_hWnd, m_settings.m_midiInterface);
     m_midi.sendMessage(newSettings.m_bclMessage);
     m_midi.setChannelMap(newSettings.m_channelMap);
 
