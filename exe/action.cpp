@@ -11,6 +11,7 @@
 
 #include <vector>
 #include <string>
+#include "psapi.h"
 
 void Action::getThreadIds(DWORD pid, std::vector<DWORD> & threadids) {
     for (ThreadIterator i; !i.end(); ++i)
@@ -79,10 +80,30 @@ HWND Action::getMainWindowFromPid(DWORD pid) {
 
 HWND Action::findWindow(const std::string & exeName, const std::string & windowName, const std::string & className) {
     std::vector<HWND> hwnds;
-    if (exeName == "*") {
+    const bool allExes = exeName == "*";
+    const bool allClasses = className == "*";
+    const bool allTitles = windowName == "*";
+    if (allExes) {
         for (WindowIterator i; !i.end(); ++i)
             if (isMainWindow(i.getHWND()))
                 hwnds.push_back(i.getHWND());
+    } else if (!allClasses) {
+        HWND hWnd = ::FindWindowEx(NULL, NULL, className.c_str(), NULL);
+        while (hWnd != NULL) {
+            if ((GetWindowLong(hWnd, GWL_STYLE) & WS_VISIBLE) != 0) {
+                DWORD processid;
+                DWORD threadid = GetWindowThreadProcessId(hWnd, &processid);
+                HANDLE hProc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processid);
+                std::vector<char> filename(1024);
+                ::GetModuleFileNameEx(hProc, NULL, filename.data(), (DWORD) filename.size());
+                std::string fname = filename.data();
+                if (fname.ends_with(exeName)) {
+                    hwnds.push_back(hWnd);
+                }
+                CloseHandle(hProc);
+            }
+            hWnd = ::FindWindowEx(NULL, hWnd, className.c_str(), NULL);
+        }
     } else {
         std::vector<DWORD> pids;
         Action::getPidsFromExe(exeName, pids);
@@ -101,11 +122,14 @@ HWND Action::findWindow(const std::string & exeName, const std::string & windowN
     if (hwnds.size() == 0)
         return NULL;
 
+    if (hwnds.size() == 1 && allTitles)
+        return hwnds[0];
+
     std::vector<HWND> accepted;
 
     for (size_t i = 0; i < hwnds.size(); ++i) {
 
-        if (windowName != "*") {
+        if (!allTitles) {
             int size = GetWindowTextLength(hwnds[i]);
             std::vector<char> titleCurr(size + 2);
             GetWindowText(hwnds[i], &titleCurr[0], size + 1);
@@ -113,7 +137,7 @@ HWND Action::findWindow(const std::string & exeName, const std::string & windowN
                 continue;
         }
 
-        if (className != "*") {
+        if (allExes && !allClasses) {
             std::vector<char> cls(260);
             GetClassName(hwnds[i], &cls[0], 248);
             if (!Wildcards::match(className, &cls[0]))
