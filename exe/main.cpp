@@ -38,14 +38,22 @@ bool fileExists(LPCWSTR szPath) {
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
     static char keyname[80];
+    //char tmp[300];
     switch (message) {
         case WM_KEYDOWN:
             ::GetKeyNameTextA((LONG) lParam, keyname, sizeof(keyname));
-            OutputDebugString((std::string("WM_KEYDOWN ") + std::to_string((int) wParam) + " " + keyname + "\n").c_str());
+            //sprintf_s(tmp, "WM_KEYDOWN %d %s %d %08llx %08llx\n", (int) wParam, keyname, message, wParam, lParam);
+            //OutputDebugString(tmp);
             return 0;
         case WM_KEYUP:
             ::GetKeyNameTextA((LONG) lParam, keyname, sizeof(keyname));
-            OutputDebugString((std::string("WM_KEYUP ") + std::to_string((int) wParam) + " " + keyname + "\n").c_str());
+            //sprintf_s(tmp, "WM_KEYUP %d %s %d %08llx %08llx\n", (int) wParam, keyname, message, wParam, lParam);
+            //OutputDebugString(tmp);
+            return 0;
+        case WM_CHAR:
+            //::GetKeyNameTextA((LONG) lParam, keyname, sizeof(keyname));
+            //sprintf_s(tmp, "WM_CHAR %d %s %d %08llx %08llx\n", (int) wParam, keyname, message, wParam, lParam);
+            //OutputDebugString(tmp);
             return 0;
         case WM_HOTKEY:
             g_app->hotkey((int) wParam);
