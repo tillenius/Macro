@@ -159,13 +159,39 @@ HWND Action::findWindow(const std::string & exeName, const std::string & windowN
     return accepted[0];
 }
 
-bool Action::activate(const std::string & exeName, const std::string & windowName, const std::string & className) {
+HWND Action::activate(const std::string & exeName, const std::string & windowName, const std::string & className) {
     HWND hWnd = findWindow(exeName, windowName, className);
     if (hWnd != NULL) {
         SwitchToThisWindow(hWnd, TRUE);
-        return true;
+        return hWnd;
     }
-    return false;
+    return NULL;
+}
+
+void Action::highlight(HWND hwnd) {
+    if (hwnd == NULL) {
+        return;
+    }
+    extern int g_overlay_x, g_overlay_y, g_overlay_cx, g_overlay_cy;
+    extern HWND g_hwndOverlay;
+    extern RECT g_overlayTarget;
+    ::GetWindowRect(hwnd, &g_overlayTarget);
+    g_overlayTarget.left -= g_overlay_x;
+    g_overlayTarget.top -= g_overlay_y;
+    g_overlayTarget.right -= g_overlay_x;
+    g_overlayTarget.bottom -= g_overlay_y;
+
+    int bx = ::GetSystemMetrics(SM_CXBORDER);
+    int by = ::GetSystemMetrics(SM_CYBORDER);
+    g_overlayTarget.left += bx;
+    g_overlayTarget.right -= bx;
+    g_overlayTarget.top += by;
+    g_overlayTarget.bottom -= by;
+    extern int g_overlay_alpha;
+    g_overlay_alpha = 255;
+    ::SetWindowPos(g_hwndOverlay, HWND_TOPMOST, g_overlay_x, g_overlay_y, g_overlay_cx, g_overlay_cy, SWP_SHOWWINDOW);
+    ::RedrawWindow(g_hwndOverlay, NULL, NULL, RDW_INTERNALPAINT);
+    ::SetTimer(g_hwndOverlay, 0, 1, (TIMERPROC) NULL);
 }
 
 void Action::run(const std::string & appName, const std::string & cmdLine, const std::string & currDir) {
@@ -186,12 +212,14 @@ void Action::run(const std::string & appName, const std::string & cmdLine, const
     }
 }
 
-void Action::activateOrRun(const std::string & exeName, const std::string & windowName, const std::string & className,
+HWND Action::activateOrRun(const std::string & exeName, const std::string & windowName, const std::string & className,
                            const std::string & appName, const std::string & cmdLine, const std::string & currDir) {
-    if (activate(exeName, windowName, className)) {
-        return;
+    HWND hwnd = activate(exeName, windowName, className);
+    if (hwnd != NULL) {
+        return hwnd;
     }
     run(appName, cmdLine, currDir);
+    return NULL;
 }
 
 struct key_t {

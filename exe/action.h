@@ -7,9 +7,10 @@
 class Action {
 public:
 	static HWND findWindow(const std::string& exeName, const std::string& windowName, const std::string& className);
-	static bool activate(const std::string & exeName, const std::string & windowName, const std::string & className);
+	static HWND activate(const std::string & exeName, const std::string & windowName, const std::string & className);
+    static void highlight(HWND hwnd);
     static void run(const std::string & appName, const std::string & cmdLine, const std::string & currDir);
-    static void activateOrRun(const std::string & exeName, const std::string & windowName, const std::string & className,
+    static HWND activateOrRun(const std::string & exeName, const std::string & windowName, const std::string & className,
                               const std::string & appName, const std::string & cmdLine, const std::string & currDir);
     static void nextWindow();
     static void prevWindow();

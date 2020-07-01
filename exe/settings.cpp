@@ -446,11 +446,13 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
     // Activate and run programs
 
 	m.def("find_window", [](const std::string& exeName, const std::string& windowName, const std::string& className) {
-		Action::findWindow(exeName, windowName, className);
+		HWND hwnd = Action::findWindow(exeName, windowName, className);
+        return pyHWND(hwnd);
 	});
 	
 	m.def("activate", [](const std::string & exeName, const std::string & windowName, const std::string & className) {
-        Action::activate(exeName, windowName, className);
+        HWND hwnd = Action::activate(exeName, windowName, className);
+        return pyHWND(hwnd);
     });
 
     m.def("run", [](const std::string & appName, const std::string & cmdLine, const std::string & currDir) {
@@ -459,7 +461,13 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
 
     m.def("activate_or_run", [](const std::string & exeName, const std::string & windowName, const std::string & className,
                                 const std::string & appName, const std::string & cmdLine, const std::string & currDir) {
-        Action::activateOrRun(exeName, windowName, className, appName, cmdLine, currDir);
+        HWND hwnd = Action::activateOrRun(exeName, windowName, className, appName, cmdLine, currDir);
+        return pyHWND(hwnd);
+    });
+
+    m.def("highlight", [](py::object hwnd_) {
+        HWND hwnd = pyHWND(hwnd_);
+        Action::highlight(hwnd);
     });
 
     // GUI

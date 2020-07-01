@@ -13,6 +13,14 @@
 
 HINSTANCE g_hInstance;
 std::unique_ptr<MacroApp> g_app;
+int g_overlay_x;
+int g_overlay_y;
+int g_overlay_cx;
+int g_overlay_cy;
+int g_overlay_alpha = 0;
+RECT g_overlayTarget{0, 0, 0, 0};
+HWND g_hWnd = NULL;
+HWND g_hwndOverlay = NULL;
 
 std::string wstr_to_utf8(WCHAR * s) {
     const int slength = (int) wcslen(s);
@@ -102,6 +110,68 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     return 0;
 }
 
+LRESULT CALLBACK WindowProcedureOverlay(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    switch (message) {
+        case WM_PAINT: {
+            HDC hdc = ::GetDC(hwnd);
+            HDC memDC = ::CreateCompatibleDC(hdc);
+            HBITMAP memBitmap = ::CreateCompatibleBitmap(hdc, g_overlay_cx, g_overlay_cy);
+            ::SelectObject(memDC, memBitmap);
+
+            RECT rect{0, 0, g_overlay_cx, g_overlay_cy};
+            HBRUSH hBrush = CreateSolidBrush(RGB(255,255,255));
+            FillRect(memDC, &rect, hBrush);
+            DeleteObject(hBrush);
+
+            hBrush = CreateSolidBrush(RGB(0,0,0));
+            FillRect(memDC, &g_overlayTarget, hBrush);
+            DeleteObject(hBrush);
+
+            POINT ptDst = { g_overlay_x, g_overlay_y };
+            POINT ptSrc = { 0, 0 };
+
+            BLENDFUNCTION blendFunction;
+            blendFunction.AlphaFormat = AC_SRC_ALPHA;
+            blendFunction.BlendFlags = 0;
+            blendFunction.BlendOp = AC_SRC_OVER;
+            blendFunction.SourceConstantAlpha = g_overlay_alpha;
+            SIZE wndSize = { g_overlay_cx, g_overlay_cy };
+            ::UpdateLayeredWindow(hwnd, hdc, &ptDst, &wndSize, memDC, &ptSrc, RGB(0,0,0), &blendFunction, ULW_ALPHA);
+            ::DeleteDC(memDC);
+            ::DeleteObject(memBitmap);
+            return 0;
+        }
+        case WM_TIMER:
+            if (g_overlay_alpha > 0) {
+                g_overlay_alpha -= 3;
+                if (g_overlay_alpha < 0) {
+                    g_overlay_alpha = 0;
+                }
+                ::RedrawWindow(hwnd, NULL, NULL, RDW_INTERNALPAINT);
+            } else {
+                ::KillTimer(hwnd, 0);
+                ::ShowWindow(hwnd, SW_HIDE);
+            }
+            return 0;
+    }
+    return DefWindowProc(hwnd, message, wParam, lParam);
+}
+
+DWORD WINAPI CreateWindowAndRunUseMesageLoop(LPVOID lpThreadParameter) {
+    g_hwndOverlay = CreateWindowEx( WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_APPWINDOW, "MACRO-OVERLAY", "", WS_OVERLAPPEDWINDOW, g_overlay_x, g_overlay_y, g_overlay_x + g_overlay_cx, g_overlay_y + g_overlay_cy, HWND_DESKTOP, NULL, g_hInstance, NULL);
+    //g_hwndOverlay = CreateWindowEx( WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_APPWINDOW, "MACRO-OVERLAY", "", WS_OVERLAPPEDWINDOW, g_overlay_x, g_overlay_y, g_overlay_x + g_overlay_cx, g_overlay_y + g_overlay_cy, hwnd, NULL, g_hInstance, NULL);
+
+    MSG msg;
+    while (BOOL bRet = GetMessage(&msg, g_hwndOverlay, 0, 0) != 0) {
+        if (bRet == -1) {
+            return 0;
+        }
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+    return 0;
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 
     if (FindWindow("keymacro", "keymacro") != NULL) {
@@ -127,14 +197,37 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return 0;
     }
 
-    HWND hWnd = CreateWindow("keymacro", "keymacro", WS_OVERLAPPEDWINDOW, 0, 0, 400, 200, NULL, NULL, hInstance, NULL);
-    if (hWnd == NULL) {
+    g_overlay_x = ::GetSystemMetrics(SM_XVIRTUALSCREEN);
+    g_overlay_y = ::GetSystemMetrics(SM_YVIRTUALSCREEN);
+    g_overlay_cx = ::GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    g_overlay_cy = ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
+
+    WNDCLASSEX wincl{ 0 };
+    wincl.cbSize = sizeof(WNDCLASSEX);
+    wincl.hInstance = g_hInstance;
+    wincl.lpszClassName = "MACRO-OVERLAY";
+    wincl.lpfnWndProc = WindowProcedureOverlay;
+    wincl.style = CS_DBLCLKS;
+    wincl.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+    wincl.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
+    wincl.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wincl.hbrBackground = (HBRUSH)COLOR_BACKGROUND;
+
+    if (!RegisterClassEx(&wincl)) {
+        MessageBox(0, "RegisterClass2() failed", 0, MB_OK);
+        return 0;
+    }
+
+    CreateThread(NULL, 0, /*(LPTHREAD_START_ROUTINE)*/ CreateWindowAndRunUseMesageLoop, NULL, 0, NULL);
+
+    g_hWnd = CreateWindow("keymacro", "keymacro", WS_OVERLAPPEDWINDOW, 0, 0, 400, 200, NULL, NULL, hInstance, NULL);
+    if (g_hWnd == NULL) {
         MessageBox(0, "CreateWindow failed", 0, MB_OK);
         return 0;
     }
 
     MSG msg;
-    while (BOOL bRet = GetMessage(&msg, hWnd, 0, 0) != 0) {
+    while (BOOL bRet = GetMessage(&msg, g_hWnd, 0, 0) != 0) {
         if (bRet == -1) {
             return 0;
         }
