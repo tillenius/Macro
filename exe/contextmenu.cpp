@@ -2,7 +2,6 @@
 #include "main.h"
 #include "settings.h"
 #include "resource.h"
-#include "../dll/Dll.h"
 
 namespace {
 

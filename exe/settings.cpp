@@ -1,4 +1,8 @@
 #include "settings.h"
+
+#include <windows.h>
+#include <gdiplus.h>
+
 #include "main.h"
 #include "hotkeys.h"
 #include "keynames.h"
@@ -14,8 +18,9 @@
 #include <algorithm>
 #include <unordered_map>
 #include <shlobj.h>
-#include <windows.h>
 #include <tlhelp32.h>
+#undef min
+#undef max
 #include "pybind11/embed.h"
 #include "pybind11/stl.h"
 #include "atlbase.h"
@@ -829,6 +834,10 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
         return true;
     });
 
+    m.def("alt_tab", []() {
+        Action::altTab();
+    });
+
     m.def("vs_active_document", []() {
         py::dict dict;
 
@@ -995,6 +1004,31 @@ bool SettingsFile::load() {
                 }
             }
         }
+
+        if (py::hasattr(settings, "apps")) {
+            py::list applist = py::cast<py::list>(settings.attr("apps"));
+            for (auto app : applist) {
+                const py::tuple t = py::cast<py::tuple>(app);
+
+                const std::string name = py::cast<std::string>(t[0]);
+                const std::string icon = py::cast<std::string>(t[1]);
+                const py::tuple activate = py::cast<py::tuple>(t[2]);
+                const py::tuple run = py::cast<py::tuple>(t[3]);
+
+                const std::string activate_exe = py::cast<std::string>(activate[0]);
+                const std::string activate_window = py::cast<std::string>(activate[1]);
+                const std::string activate_class = py::cast<std::string>(activate[2]);
+
+                const std::string run_appname = py::cast<std::string>(run[0]);
+                const std::string run_cmdline = py::cast<std::string>(run[1]);
+                const std::string run_currdir = py::cast<std::string>(run[2]);
+
+                m_apps.push_back(app_t{name, icon, activate_exe, activate_window, activate_class, run_appname, run_cmdline, run_currdir});
+            }
+
+            setupSwitchScreen();
+        }
+
     } catch (const std::exception & ex) {
         SwitchToThisWindow(g_app->m_hWnd, TRUE);
         MessageBox(0, ex.what(), 0, MB_OK);
@@ -1006,4 +1040,72 @@ bool SettingsFile::load() {
     m_hotkeys.add(0, m_settings.m_playbutton, []() { g_app->playback(g_app->m_macro.get(), false); });
 
     return true;
+}
+
+void SettingsFile::setupSwitchScreen() {
+    if (m_apps.size() == 0) {
+        m_switch_screen.reset();
+        return;
+    }
+
+    const int rows = ( (int) m_apps.size() + 2 ) / 3;
+
+    const int iconWidth = 64;
+    const int iconHeight = 64;
+    const int screenWidth = 600;
+    const int numCols = 3;
+    const int itemWidth = screenWidth / numCols;
+    const int itemHeight = 160;
+    const int textHeight = 20;
+
+    m_switch_screen.reset(new Gdiplus::Bitmap(screenWidth, itemHeight * rows));
+
+    Gdiplus::SolidBrush brush(Gdiplus::Color::Black);
+    Gdiplus::SolidBrush white(Gdiplus::Color::Yellow);
+    Gdiplus::SolidBrush green(Gdiplus::Color::Green);
+    Gdiplus::SolidBrush bg(Gdiplus::Color::White);
+    Gdiplus::FontFamily fontFamily(L"Segoe UI");
+    Gdiplus::Font font(&fontFamily, 20, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+
+    Gdiplus::Graphics * g = Gdiplus::Graphics::FromImage(m_switch_screen.get());
+    g->Clear(Gdiplus::Color(255, 255, 255, 255));
+
+    Gdiplus::RectF rect(0.0f, 0.0f, (float) m_switch_screen->GetWidth(), (float) m_switch_screen->GetHeight());
+    Gdiplus::Pen pen(Gdiplus::Color::Black, 2);
+    g->DrawRectangle(&pen, rect);
+
+    int row = 0;
+    int col = 0;
+    for (int i = 0; i < m_apps.size(); ++i) {
+
+        Gdiplus::RectF rectItem((float) col * itemWidth, (float) row * itemHeight, (float) itemWidth, (float) itemHeight);
+        rectItem.Inflate(-10.0f, -10.0f);
+
+        Gdiplus::RectF rectText = rectItem;
+        rectText.Y = rectItem.Y + rectItem.Height - 10 - textHeight;
+        rectText.Height = textHeight;
+
+        Gdiplus::RectF rectIcon = rectItem;
+        rectIcon.Height = rectText.Y - rectItem.Y;
+        rectIcon.X += (rectIcon.Width - iconWidth) / 2;
+        rectIcon.Width = iconWidth;
+        rectIcon.Y += (rectIcon.Height - iconHeight) / 2;
+        rectIcon.Height = iconHeight;
+
+        Gdiplus::Image * image = Gdiplus::Image::FromFile(utf8_to_wstr(m_apps[i].icon).c_str());
+        g->DrawImage(image, rectIcon);
+        delete image;
+
+        Gdiplus::StringFormat stringFormat;
+        stringFormat.SetAlignment(Gdiplus::StringAlignmentCenter);
+        stringFormat.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+        g->DrawString(utf8_to_wstr(m_apps[i].name).c_str(), -1, &font, rectText, &stringFormat, &brush);
+        ++col;
+        if (col == numCols) {
+            col = 0;
+            ++row;
+        }
+    }
+    g->Flush();
+    delete g;
 }

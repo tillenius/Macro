@@ -4,23 +4,40 @@
 #include "hotkeys.h"
 #include "settings.h"
 #include "resource.h"
-#include "../dll/dll.h"
+#include "action.h"
 
 #include <windows.h>
 #include <memory>
 #include <fstream>
 #include <shlobj.h>
+#include <gdiplus.h>
+
+using namespace Gdiplus;
+#pragma comment (lib, "Gdiplus.lib")
 
 HINSTANCE g_hInstance;
+bool g_hookEnabled = false;
 std::unique_ptr<MacroApp> g_app;
 int g_overlay_x;
 int g_overlay_y;
 int g_overlay_cx;
 int g_overlay_cy;
-int g_overlay_alpha = 0;
+bool g_overlay_restart = false;
+bool g_overlay_fullscreen = false;
+DWORD g_overlay_endtime = 0;
 RECT g_overlayTarget{0, 0, 0, 0};
 HWND g_hWnd = NULL;
 HWND g_hwndOverlay = NULL;
+HWND g_hWndAltTab = NULL;
+HHOOK g_hook = NULL;
+
+bool g_alttab_window = false;
+bool g_request_alttab_on = false;
+bool g_request_alttab_off = false;
+bool g_capslock = false;
+
+void Hook() { g_hookEnabled = true; }
+void Unhook() { g_hookEnabled = false; }
 
 std::string wstr_to_utf8(WCHAR * s) {
     const int slength = (int) wcslen(s);
@@ -44,17 +61,186 @@ bool fileExists(LPCWSTR szPath) {
             !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
 
+int getTaskSwitchKey(WPARAM wParam) {
+    switch (wParam) {
+        case '1': return 0;
+        case '2': return 1;
+        case '3': return 2;
+        case 'Q': return 3;
+        case 'W': return 4;
+        case 'E': return 5;
+        case 'A': return 6;
+        case 'S': return 7;
+        case 'D': return 8;
+        case 'Z': return 9;
+        case 'X': return 10;
+        case 'C': return 11;
+        default: return -1;
+    }
+}
+
+LRESULT CALLBACK WndProcAltTab(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    switch (message) {
+        case WM_KILLFOCUS: {
+            ::ShowWindow(hwnd, SW_HIDE);
+            return 0;
+        }
+        case WM_USER_ALTTAB_ON: {
+            g_alttab_window = true;
+            ::ShowWindow(hwnd, SW_SHOW);
+            ::SetForegroundWindow(hwnd);
+            g_request_alttab_on = false;
+            return 0;
+        }
+        case WM_USER_ALTTAB_OFF: {
+            g_alttab_window = false;
+            ::ShowWindow(hwnd, SW_HIDE);
+            g_request_alttab_off = false;
+            return 0;
+        }
+        case WM_KEYDOWN: {
+            const int index = getTaskSwitchKey(wParam);
+            if (0 <= index && index < g_app->m_apps.size()) {
+                app_t & app = g_app->m_apps[index];
+
+                HWND hwnd = Action::activate(app.activate_exe, app.activate_window, app.activate_class);
+                if (hwnd != NULL) {
+                    Action::highlight(hwnd);
+                    return 0;
+                }
+                Action::run(app.run_appname, app.run_cmdline, app.run_currdir);
+            }
+            ::ShowWindow(hwnd, SW_HIDE);
+            return 0;
+        }
+        case WM_PAINT: {
+            Gdiplus::Graphics graphics(GetDC(hwnd));
+            graphics.DrawImage(g_app->m_switch_screen.get(), 0, 0);
+            return 0;
+        }
+    }
+
+    return DefWindowProc(hwnd, message, wParam, lParam);
+}
+
+LRESULT CALLBACK WndProcOverlay(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    switch (message) {
+        case WM_KILLFOCUS: {
+            ::ShowWindow(hwnd, SW_HIDE);
+            return 0;
+        }
+        case WM_SHOWWINDOW: {
+            if (wParam == FALSE) {
+                Gdiplus::Graphics graphics(g_app->hdcBackBuffer);
+                graphics.Clear(Color(0, 0, 0, 0));
+            }
+            break;
+        }
+        case WM_PAINT: {
+            HDC hdcScreen = GetDC(hwnd);
+            if (g_app->hdcBackBuffer == NULL) {
+                g_app->hdcBackBuffer = CreateCompatibleDC(hdcScreen);
+                g_app->bitmap = new Gdiplus::Bitmap(g_overlay_cx, g_overlay_cy);
+                g_app->g1 = Gdiplus::Graphics::FromImage(g_app->bitmap);
+                g_app->hbmBackBuffer = CreateCompatibleBitmap(hdcScreen, g_overlay_cx, g_overlay_cy);
+            }
+
+            HGDIOBJ hbmOld = SelectObject(g_app->hdcBackBuffer, g_app->hbmBackBuffer);
+
+            Gdiplus::Graphics * g1 = g_app->g1;
+            g1->Clear(Color(0,0,0,0));
+
+            const DWORD tick = GetTickCount();
+            float t;
+            if (g_overlay_restart) {
+                t = 0.0f;
+                g_overlay_endtime = tick + 300;
+                g_overlay_restart = false;
+            } else if (tick >= g_overlay_endtime) {
+                t = 1.0f;
+                g_overlay_endtime = 0;
+                ::KillTimer(hwnd, 0);
+                ::ShowWindow(hwnd, SW_HIDE);
+            } else {
+                t = 1.0f - (g_overlay_endtime - tick) / 300.0f;
+            }
+
+            RECT overlayTarget = g_overlayTarget;
+            if (g_overlay_endtime != 0) {
+
+                overlayTarget.left -= g_overlay_x;
+                overlayTarget.top -= g_overlay_y;
+                overlayTarget.right -= g_overlay_x;
+                overlayTarget.bottom -= g_overlay_y;
+
+                if (!g_overlay_fullscreen) {
+                    Gdiplus::SolidBrush black(Color(255, 0, 0, 0));
+                    int size = (int) ((1.0f - t) * 10);
+                    if (size > 0) {
+                        const int x0 = overlayTarget.left - size;
+                        const int y0 = overlayTarget.top - size;
+                        const int x1 = overlayTarget.right - overlayTarget.left + 2 * size;
+                        const int y1 = overlayTarget.bottom - overlayTarget.top + 2 * size;
+                        Gdiplus::Rect srect1(x0, y0, x1, size);
+                        Gdiplus::Rect srect2(x0, y0, size, y1);
+                        Gdiplus::Rect srect3(overlayTarget.right, y0, size, y1);
+                        Gdiplus::Rect srect4(x0, overlayTarget.bottom, x1, size);
+                        g1->FillRectangle(&black, srect1);
+                        g1->FillRectangle(&black, srect2);
+                        g1->FillRectangle(&black, srect3);
+                        g1->FillRectangle(&black, srect4);
+                    }
+                }
+
+                Gdiplus::SolidBrush brush(Gdiplus::Color((BYTE) ((1.0f-t) * 127.0f + 0.5f), 205, 0, 0));
+                Gdiplus::Rect srect(overlayTarget.left, overlayTarget.top, 
+                                    overlayTarget.right - overlayTarget.left,
+                                    overlayTarget.bottom - overlayTarget.top);
+                g1->FillRectangle(&brush, srect);
+            }
+
+            Gdiplus::Graphics graphics(g_app->hdcBackBuffer);
+            graphics.Clear(Color(0, 0, 0, 0));
+            graphics.DrawImage(g_app->bitmap, 0, 0);
+
+            POINT ptSrc = { 0, 0 };
+
+            BLENDFUNCTION blendFunction;
+            blendFunction.AlphaFormat = AC_SRC_ALPHA;
+            blendFunction.BlendFlags = 0;
+            blendFunction.BlendOp = AC_SRC_OVER;
+            blendFunction.SourceConstantAlpha = 255;
+            SIZE wndSize = { g_overlay_cx, g_overlay_cy };
+            ::UpdateLayeredWindow(hwnd, NULL, NULL, &wndSize, g_app->hdcBackBuffer, &ptSrc, RGB(0,0,0), &blendFunction, ULW_ALPHA);
+            ::SelectObject(g_app->hdcBackBuffer, hbmOld);
+            return 0;
+        }
+        case WM_TIMER: {
+            ::RedrawWindow(hwnd, NULL, NULL, RDW_INTERNALPAINT);
+            return 0;
+        }
+    }
+
+    return DefWindowProc(hwnd, message, wParam, lParam);
+}
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    static char keyname[80];
+    if (hWnd == g_hWndAltTab) {
+        return WndProcAltTab(hWnd, message, wParam, lParam);
+    } else if (hWnd == g_hwndOverlay) {
+        return WndProcOverlay(hWnd, message, wParam, lParam);
+    }
+
+    //static char keyname[80];
     //char tmp[300];
     switch (message) {
         case WM_KEYDOWN:
-            ::GetKeyNameTextA((LONG) lParam, keyname, sizeof(keyname));
+            //::GetKeyNameTextA((LONG) lParam, keyname, sizeof(keyname));
             //sprintf_s(tmp, "WM_KEYDOWN %d %s %d %08llx %08llx\n", (int) wParam, keyname, message, wParam, lParam);
             //OutputDebugString(tmp);
             return 0;
         case WM_KEYUP:
-            ::GetKeyNameTextA((LONG) lParam, keyname, sizeof(keyname));
+            //::GetKeyNameTextA((LONG) lParam, keyname, sizeof(keyname));
             //sprintf_s(tmp, "WM_KEYUP %d %s %d %08llx %08llx\n", (int) wParam, keyname, message, wParam, lParam);
             //OutputDebugString(tmp);
             return 0;
@@ -93,9 +279,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             }
             return 0;
         case WM_CREATE: {
-            g_app = std::make_unique<MacroApp>(g_hInstance, hWnd);
-            g_app->m_systray.Icon(IDI_ICON4);
-            g_app->reload(true);
+            if (!g_app) {
+                g_app = std::make_unique<MacroApp>(g_hInstance, hWnd);
+                g_app->m_systray.Icon(IDI_ICON4);
+                g_app->reload(true);
+            }
             return 0;
         }
         case WM_DESTROY:
@@ -110,66 +298,42 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     return 0;
 }
 
-LRESULT CALLBACK WindowProcedureOverlay(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    switch (message) {
-        case WM_PAINT: {
-            HDC hdc = ::GetDC(hwnd);
-            HDC memDC = ::CreateCompatibleDC(hdc);
-            HBITMAP memBitmap = ::CreateCompatibleBitmap(hdc, g_overlay_cx, g_overlay_cy);
-            ::SelectObject(memDC, memBitmap);
-
-            RECT rect{0, 0, g_overlay_cx, g_overlay_cy};
-            HBRUSH hBrush = CreateSolidBrush(RGB(255,255,255));
-            FillRect(memDC, &rect, hBrush);
-            DeleteObject(hBrush);
-
-            hBrush = CreateSolidBrush(RGB(0,0,0));
-            FillRect(memDC, &g_overlayTarget, hBrush);
-            DeleteObject(hBrush);
-
-            POINT ptDst = { g_overlay_x, g_overlay_y };
-            POINT ptSrc = { 0, 0 };
-
-            BLENDFUNCTION blendFunction;
-            blendFunction.AlphaFormat = AC_SRC_ALPHA;
-            blendFunction.BlendFlags = 0;
-            blendFunction.BlendOp = AC_SRC_OVER;
-            blendFunction.SourceConstantAlpha = g_overlay_alpha;
-            SIZE wndSize = { g_overlay_cx, g_overlay_cy };
-            ::UpdateLayeredWindow(hwnd, hdc, &ptDst, &wndSize, memDC, &ptSrc, RGB(0,0,0), &blendFunction, ULW_ALPHA);
-            ::DeleteDC(memDC);
-            ::DeleteObject(memBitmap);
-            return 0;
-        }
-        case WM_TIMER:
-            if (g_overlay_alpha > 0) {
-                g_overlay_alpha -= 3;
-                if (g_overlay_alpha < 0) {
-                    g_overlay_alpha = 0;
+LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (g_hWnd != NULL && nCode == HC_ACTION) {
+        KBDLLHOOKSTRUCT * kbdllHookStruct = (KBDLLHOOKSTRUCT *) lParam;
+        if (kbdllHookStruct->vkCode == VK_CAPITAL) {
+            if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+                g_capslock = true;
+                if (!g_alttab_window && !g_request_alttab_on) {
+                    g_request_alttab_on = true;
+                    PostMessage(g_hWndAltTab, WM_USER_ALTTAB_ON, 0, 0);
                 }
-                ::RedrawWindow(hwnd, NULL, NULL, RDW_INTERNALPAINT);
-            } else {
-                ::KillTimer(hwnd, 0);
-                ::ShowWindow(hwnd, SW_HIDE);
+            } else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
+                g_capslock = false;
+                if (g_alttab_window && !g_request_alttab_off) {
+                    g_request_alttab_off = true;
+                    PostMessage(g_hWndAltTab, WM_USER_ALTTAB_OFF, 0, 0);
+                }
             }
-            return 0;
-    }
-    return DefWindowProc(hwnd, message, wParam, lParam);
-}
-
-DWORD WINAPI CreateWindowAndRunUseMesageLoop(LPVOID lpThreadParameter) {
-    g_hwndOverlay = CreateWindowEx( WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_APPWINDOW, "MACRO-OVERLAY", "", WS_OVERLAPPEDWINDOW, g_overlay_x, g_overlay_y, g_overlay_x + g_overlay_cx, g_overlay_y + g_overlay_cy, HWND_DESKTOP, NULL, g_hInstance, NULL);
-    //g_hwndOverlay = CreateWindowEx( WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_APPWINDOW, "MACRO-OVERLAY", "", WS_OVERLAPPEDWINDOW, g_overlay_x, g_overlay_y, g_overlay_x + g_overlay_cx, g_overlay_y + g_overlay_cy, hwnd, NULL, g_hInstance, NULL);
-
-    MSG msg;
-    while (BOOL bRet = GetMessage(&msg, g_hwndOverlay, 0, 0) != 0) {
-        if (bRet == -1) {
-            return 0;
+            return 1;
         }
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        if (g_capslock && wParam == WM_KEYDOWN) {
+            if (getTaskSwitchKey(kbdllHookStruct->vkCode) != -1) {
+                PostMessage(g_hWndAltTab, WM_KEYDOWN, kbdllHookStruct->vkCode, 0);
+                return 1;
+            }
+        }
+
+        if (g_hookEnabled) {
+            WPARAM newwparam = kbdllHookStruct->vkCode;
+            LPARAM newlparam = ((LPARAM) kbdllHookStruct->scanCode) << 16;
+            newlparam |= (kbdllHookStruct->flags & LLKHF_EXTENDED) ? (1 << 24) : 0;
+            newlparam |= (kbdllHookStruct->flags & LLKHF_ALTDOWN) ? (1 << 29) : 0;
+            newlparam |= (kbdllHookStruct->flags & LLKHF_UP) ? (1 << 31) : 0;
+            PostMessage(g_hWnd, WM_USER_GOTKEY, newwparam, newlparam);
+        }
     }
-    return 0;
+    return CallNextHookEx(g_hook, nCode, wParam, lParam);
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
@@ -197,28 +361,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return 0;
     }
 
+	/* TODO: check destructors of globals like Application... */
+    struct GdiPlus {
+        GdiplusStartupInput gdiplusStartupInput;
+        ULONG_PTR gdiplusToken;
+        GdiPlus() {
+            GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+        }
+        ~GdiPlus() {
+            GdiplusShutdown(gdiplusToken);
+        }
+    } gdiplus;
+
     g_overlay_x = ::GetSystemMetrics(SM_XVIRTUALSCREEN);
     g_overlay_y = ::GetSystemMetrics(SM_YVIRTUALSCREEN);
     g_overlay_cx = ::GetSystemMetrics(SM_CXVIRTUALSCREEN);
     g_overlay_cy = ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
-
-    WNDCLASSEX wincl{ 0 };
-    wincl.cbSize = sizeof(WNDCLASSEX);
-    wincl.hInstance = g_hInstance;
-    wincl.lpszClassName = "MACRO-OVERLAY";
-    wincl.lpfnWndProc = WindowProcedureOverlay;
-    wincl.style = CS_DBLCLKS;
-    wincl.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-    wincl.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
-    wincl.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wincl.hbrBackground = (HBRUSH)COLOR_BACKGROUND;
-
-    if (!RegisterClassEx(&wincl)) {
-        MessageBox(0, "RegisterClass2() failed", 0, MB_OK);
-        return 0;
-    }
-
-    CreateThread(NULL, 0, /*(LPTHREAD_START_ROUTINE)*/ CreateWindowAndRunUseMesageLoop, NULL, 0, NULL);
 
     g_hWnd = CreateWindow("keymacro", "keymacro", WS_OVERLAPPEDWINDOW, 0, 0, 400, 200, NULL, NULL, hInstance, NULL);
     if (g_hWnd == NULL) {
@@ -226,8 +384,39 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return 0;
     }
 
+    const int width = g_app->m_switch_screen->GetWidth();
+    const int height = g_app->m_switch_screen->GetHeight();
+    const int cx = ::GetSystemMetrics(SM_CXSCREEN);
+    const int cy = ::GetSystemMetrics(SM_CYSCREEN);
+    g_hWndAltTab = CreateWindowEx( WS_EX_TOPMOST | WS_EX_TOOLWINDOW, "keymacro", "keymacro-alttab", WS_POPUP, (cx - width) / 2, (cy - height) / 2, width, height, NULL, NULL, hInstance, NULL);
+    if (g_hWndAltTab == NULL) {
+        MessageBox(0, "CreateWindow3 failed", 0, MB_OK);
+        return 0;
+    }
+
+    g_hwndOverlay = CreateWindowEx( WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW, "keymacro", "keymacro-overlay", WS_OVERLAPPEDWINDOW, g_overlay_x, g_overlay_y, g_overlay_x + g_overlay_cx, g_overlay_y + g_overlay_cy, HWND_DESKTOP, NULL, g_hInstance, NULL);
+    if (g_hwndOverlay == NULL) {
+        MessageBox(0, "CreateWindow2 failed", 0, MB_OK);
+        return 0;
+    }
+
+    struct WindowsHook {
+        WindowsHook(HINSTANCE hInstance) {
+            g_hook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, hInstance, NULL);
+        }
+        ~WindowsHook() {
+            if (g_hook != NULL) {
+                UnhookWindowsHookEx(g_hook);
+            }
+        }
+    } windowshook(hInstance);
+
+    if (g_hook == NULL) {
+        MessageBox(NULL, "SetWindowsHookEx failed", 0, MB_OK);
+    }
+
     MSG msg;
-    while (BOOL bRet = GetMessage(&msg, g_hWnd, 0, 0) != 0) {
+    while (BOOL bRet = GetMessage(&msg, NULL /*g_hWnd*/, 0, 0) != 0) {
         if (bRet == -1) {
             return 0;
         }
@@ -311,6 +500,8 @@ bool MacroApp::reload(bool enable) {
     // copy new settings over
     std::swap(newSettings.m_settings, m_settings);
     std::swap(newSettings.m_hotkeys, m_hotkeys);
+    std::swap(newSettings.m_apps, m_apps);
+    std::swap(newSettings.m_switch_screen, m_switch_screen);
 
     // enable new hotkeys
     if (enable) {
@@ -324,6 +515,14 @@ bool MacroApp::reload(bool enable) {
     m_midi.init(m_hWnd, m_settings.m_midiInterface);
     m_midi.sendMessage(newSettings.m_bclMessage);
     m_midi.setChannelMap(newSettings.m_channelMap);
+
+    if (g_hWndAltTab != NULL) {
+        const int width = m_switch_screen->GetWidth();
+        const int height = m_switch_screen->GetHeight();
+        const int cx = ::GetSystemMetrics(SM_CXSCREEN);
+        const int cy = ::GetSystemMetrics(SM_CYSCREEN);
+        ::MoveWindow(g_hWndAltTab, (cx - width) / 2, (cy - height) / 2, width, height, FALSE);
+    }
 
     return true;
 }

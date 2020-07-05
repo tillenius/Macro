@@ -9,6 +9,10 @@
 
 class Hotkeys {
 private:
+
+    HWND m_hWnd = NULL;
+
+public:
     struct Entry {
         UINT fsModifiers;
         UINT vk;
@@ -16,10 +20,6 @@ private:
         Entry(UINT fsModifiers, UINT vk, std::function<void()> fn) : fsModifiers(fsModifiers), vk(vk), fn(fn) {}
     };
 
-    std::vector<Entry> m_hotkeys;
-    HWND m_hWnd = NULL;
-
-public:
     bool m_enabled = false;
 
     ~Hotkeys();
@@ -31,4 +31,6 @@ public:
     void enable(HWND hWnd);
     void disable();
     void execute(int ID);
+
+    std::vector<Entry> m_hotkeys;
 };

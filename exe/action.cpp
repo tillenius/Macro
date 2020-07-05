@@ -3,7 +3,6 @@
 #include "macro.h"
 #include "systray.h"
 #include "resource.h"
-#include "../dll/dll.h"
 #include "util/threaditerator.h"
 #include "util/windowiterator.h"
 #include "util/processiterator.h"
@@ -11,7 +10,10 @@
 
 #include <vector>
 #include <string>
-#include "psapi.h"
+#include <psapi.h>
+#include <dwmapi.h>
+
+#pragma comment(lib, "Dwmapi.lib")
 
 void Action::getThreadIds(DWORD pid, std::vector<DWORD> & threadids) {
     for (ThreadIterator i; !i.end(); ++i)
@@ -172,25 +174,30 @@ void Action::highlight(HWND hwnd) {
     if (hwnd == NULL) {
         return;
     }
+
     extern int g_overlay_x, g_overlay_y, g_overlay_cx, g_overlay_cy;
     extern HWND g_hwndOverlay;
     extern RECT g_overlayTarget;
-    ::GetWindowRect(hwnd, &g_overlayTarget);
-    g_overlayTarget.left -= g_overlay_x;
-    g_overlayTarget.top -= g_overlay_y;
-    g_overlayTarget.right -= g_overlay_x;
-    g_overlayTarget.bottom -= g_overlay_y;
 
-    int bx = ::GetSystemMetrics(SM_CXBORDER);
-    int by = ::GetSystemMetrics(SM_CYBORDER);
-    g_overlayTarget.left += bx;
-    g_overlayTarget.right -= bx;
-    g_overlayTarget.top += by;
-    g_overlayTarget.bottom -= by;
-    extern int g_overlay_alpha;
-    g_overlay_alpha = 255;
-    ::SetWindowPos(g_hwndOverlay, HWND_TOPMOST, g_overlay_x, g_overlay_y, g_overlay_cx, g_overlay_cy, SWP_SHOWWINDOW);
-    ::RedrawWindow(g_hwndOverlay, NULL, NULL, RDW_INTERNALPAINT);
+    if (IsIconic(hwnd)) {
+        WINDOWPLACEMENT wp = { sizeof(wp) };
+        GetWindowPlacement(hwnd, &wp);
+        if ((wp.flags & WPF_RESTORETOMAXIMIZED) != 0) {
+            MONITORINFO mi = { sizeof(mi) };
+            GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY), &mi);
+            g_overlayTarget = mi.rcMonitor;
+        } else {
+            g_overlayTarget = wp.rcNormalPosition;
+        }
+    } else {
+        DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &g_overlayTarget, sizeof(g_overlayTarget));
+    }
+
+    extern bool g_overlay_restart;
+    extern bool g_overlay_fullscreen;
+    g_overlay_restart = true;
+    g_overlay_fullscreen = IsZoomed(hwnd);
+    ::SetWindowPos(g_hwndOverlay, HWND_TOPMOST, g_overlay_x, g_overlay_y, g_overlay_cx, g_overlay_cy, SWP_SHOWWINDOW | SWP_NOCOPYBITS);
     ::SetTimer(g_hwndOverlay, 0, 1, (TIMERPROC) NULL);
 }
 
@@ -309,4 +316,12 @@ void Action::prevWindow() {
         {VK_ESCAPE, KEYEVENTF_KEYUP},
         {VK_LSHIFT, KEYEVENTF_KEYUP},
         {VK_LMENU, KEYEVENTF_KEYUP}}, true);
+}
+
+void Action::altTab() {
+    extern bool g_alttab_window;
+    extern HWND g_hWndAltTab;
+    g_alttab_window = true;
+    ::ShowWindow(g_hWndAltTab, SW_SHOW);
+    ::SetForegroundWindow(g_hWndAltTab);
 }

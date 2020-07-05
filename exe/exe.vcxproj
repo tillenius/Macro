@@ -152,6 +152,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="action.h" />
+    <ClInclude Include="app.h" />
     <ClInclude Include="contextmenu.h" />
     <ClInclude Include="hotkeys.h" />
     <ClInclude Include="keynames.h" />

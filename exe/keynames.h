@@ -303,7 +303,11 @@ public:
         if (!errorMsg.empty()) {
             return false;
         }
-        vk = readKeyName(words[idx], errorMsg);
+        if (idx >= words.size()) {
+            vk = 0;
+        } else {
+            vk = readKeyName(words[idx], errorMsg);
+        }
         if (!errorMsg.empty()) {
             return false;
         }

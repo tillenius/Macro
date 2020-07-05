@@ -29,4 +29,6 @@ public:
     // The "Main Window" is the first found visible root Window.
     static HWND getMainWindowFromThread(DWORD threadid);
     static HWND getMainWindowFromPid(DWORD pid);
+
+    static void altTab();
 };
