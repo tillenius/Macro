@@ -85,15 +85,30 @@ LRESULT CALLBACK WndProcAltTab(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
             ::ShowWindow(hwnd, SW_HIDE);
             return 0;
         }
+        case WM_SHOWWINDOW: {
+            g_alttab_window = wParam == TRUE;
+            break;
+        }
         case WM_USER_ALTTAB_ON: {
-            g_alttab_window = true;
             ::ShowWindow(hwnd, SW_SHOW);
-            ::SetForegroundWindow(hwnd);
+
+            BOOL ret = ::SetForegroundWindow(hwnd);
+            if (ret == FALSE) {
+                // The system automatically enables calls to SetForegroundWindow if the user presses the ALT key 
+                INPUT keys[2] = {0};
+                keys[0].type = INPUT_KEYBOARD;
+                keys[0].ki.wVk = VK_MENU;
+                keys[1].type = INPUT_KEYBOARD;
+                keys[1].ki.wVk = VK_MENU;
+                keys[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                SendInput(2, keys, sizeof(INPUT));
+                ret = ::SetForegroundWindow(hwnd);
+            }
+
             g_request_alttab_on = false;
             return 0;
         }
         case WM_USER_ALTTAB_OFF: {
-            g_alttab_window = false;
             ::ShowWindow(hwnd, SW_HIDE);
             g_request_alttab_off = false;
             return 0;
@@ -103,14 +118,19 @@ LRESULT CALLBACK WndProcAltTab(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
             if (0 <= index && index < g_app->m_apps.size()) {
                 app_t & app = g_app->m_apps[index];
 
-                HWND hwnd = Action::activate(app.activate_exe, app.activate_window, app.activate_class);
-                if (hwnd != NULL) {
-                    Action::highlight(hwnd);
+                HWND hwndActivated = Action::activate(app.activate_exe, app.activate_window, app.activate_class);
+                if (hwndActivated != NULL) {
+                    Action::highlight(hwndActivated);
+                    if (g_alttab_window) {
+                        ::ShowWindow(hwnd, SW_HIDE);
+                    }
                     return 0;
                 }
                 Action::run(app.run_appname, app.run_cmdline, app.run_currdir);
             }
-            ::ShowWindow(hwnd, SW_HIDE);
+            if (g_alttab_window) {
+                ::ShowWindow(hwnd, SW_HIDE);
+            }
             return 0;
         }
         case WM_PAINT: {
