@@ -134,7 +134,7 @@ LRESULT CALLBACK WndProcAltTab(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
             return 0;
         }
         case WM_PAINT: {
-            Gdiplus::Graphics graphics(GetDC(hwnd));
+            Gdiplus::Graphics graphics(hwnd);
             graphics.DrawImage(g_app->m_switch_screen.get(), 0, 0);
             return 0;
         }
