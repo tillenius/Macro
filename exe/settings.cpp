@@ -1056,7 +1056,7 @@ void SettingsFile::setupSwitchScreen() {
     const int numCols = 3;
     const int itemWidth = screenWidth / numCols;
     const int itemHeight = 160;
-    const int textHeight = 20;
+    const int textHeight = 30;
 
     m_switch_screen.reset(new Gdiplus::Bitmap(screenWidth, itemHeight * rows));
 
