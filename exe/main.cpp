@@ -322,6 +322,15 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (g_hWnd != NULL && nCode == HC_ACTION) {
         KBDLLHOOKSTRUCT * kbdllHookStruct = (KBDLLHOOKSTRUCT *) lParam;
         if (kbdllHookStruct->vkCode == VK_CAPITAL) {
+            if ((GetKeyState(VK_CAPITAL) & 0x0001) != 0) {
+                INPUT keys[2] = {0};
+                keys[0].type = INPUT_KEYBOARD;
+                keys[0].ki.wVk = VK_CAPITAL;
+                keys[1].type = INPUT_KEYBOARD;
+                keys[1].ki.wVk = VK_CAPITAL;
+                keys[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                SendInput(2, keys, sizeof(INPUT));
+            }
             if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
                 g_capslock = true;
                 if (!g_alttab_window && !g_request_alttab_on) {
