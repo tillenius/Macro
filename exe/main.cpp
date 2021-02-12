@@ -157,7 +157,10 @@ LRESULT CALLBACK WndProcOverlay(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
             break;
         }
         case WM_PAINT: {
-            HDC hdcScreen = GetDC(hwnd);
+
+            PAINTSTRUCT ps;
+            HDC hdcScreen = BeginPaint(hwnd, &ps);
+
             if (g_app->hdcBackBuffer == NULL) {
                 g_app->hdcBackBuffer = CreateCompatibleDC(hdcScreen);
                 g_app->bitmap = new Gdiplus::Bitmap(g_overlay_cx, g_overlay_cy);
@@ -177,12 +180,13 @@ LRESULT CALLBACK WndProcOverlay(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
                 g_overlay_endtime = tick + 300;
                 g_overlay_restart = false;
             } else if (tick >= g_overlay_endtime) {
-                t = 1.0f;
+                t = 0.0f;
                 g_overlay_endtime = 0;
                 ::KillTimer(hwnd, 0);
                 ::ShowWindow(hwnd, SW_HIDE);
             } else {
-                t = 1.0f - (g_overlay_endtime - tick) / 300.0f;
+                const float s = 1.0f - (g_overlay_endtime - tick) / 300.0f;
+                t = fmax( sin(s * 3.14159265358979323846f), 0.0f );
             }
 
             RECT overlayTarget = g_overlayTarget;
@@ -195,7 +199,7 @@ LRESULT CALLBACK WndProcOverlay(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
 
                 if (!g_overlay_fullscreen) {
                     Gdiplus::SolidBrush black(Color(255, 0, 0, 0));
-                    int size = (int) ((1.0f - t) * 10);
+                    int size = (int) (t*10 + 0.5f);
                     if (size > 0) {
                         const int x0 = overlayTarget.left - size;
                         const int y0 = overlayTarget.top - size;
@@ -212,7 +216,7 @@ LRESULT CALLBACK WndProcOverlay(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
                     }
                 }
 
-                Gdiplus::SolidBrush brush(Gdiplus::Color((BYTE) ((1.0f-t) * 127.0f + 0.5f), 205, 0, 0));
+                Gdiplus::SolidBrush brush(Gdiplus::Color((BYTE) (t * 127.0f + 0.5f), 205, 0, 0));
                 Gdiplus::Rect srect(overlayTarget.left, overlayTarget.top, 
                                     overlayTarget.right - overlayTarget.left,
                                     overlayTarget.bottom - overlayTarget.top);
@@ -233,6 +237,7 @@ LRESULT CALLBACK WndProcOverlay(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
             SIZE wndSize = { g_overlay_cx, g_overlay_cy };
             ::UpdateLayeredWindow(hwnd, NULL, NULL, &wndSize, g_app->hdcBackBuffer, &ptSrc, RGB(0,0,0), &blendFunction, ULW_ALPHA);
             ::SelectObject(g_app->hdcBackBuffer, hbmOld);
+            EndPaint(hwnd, &ps);
             return 0;
         }
         case WM_TIMER: {
