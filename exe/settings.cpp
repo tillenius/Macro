@@ -1036,8 +1036,8 @@ bool SettingsFile::load() {
     }
 
     m_bclMessage("$end");
-    m_hotkeys.add(0, m_settings.m_recbutton, []() { g_app->record(); });
-    m_hotkeys.add(0, m_settings.m_playbutton, []() { g_app->playback(g_app->m_macro.get(), false); });
+//    m_hotkeys.add(0, m_settings.m_recbutton, []() { g_app->record(); });
+//    m_hotkeys.add(0, m_settings.m_playbutton, []() { g_app->playback(g_app->m_macro.get(), false); });
 
     return true;
 }
