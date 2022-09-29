@@ -687,7 +687,7 @@ void MacroApp::editConfigFile() {
     PROCESS_INFORMATION lpProcessInfo{0};
     STARTUPINFO siStartupInfo{0};
     siStartupInfo.cb = sizeof(STARTUPINFO);
-    const std::string editor = "C:\\Program Files\\Sublime Text 3\\sublime_text.exe"; // @TODO
+    const std::string editor = "C:\\Program Files\\Sublime Text\\sublime_text.exe"; // @TODO
     if (CreateProcess(editor.c_str(),
         (LPSTR) (std::string("\"") + editor + "\" \"" + file + "\"").c_str(), NULL, NULL, FALSE, NULL, NULL, NULL, &siStartupInfo, &lpProcessInfo)) {
         CloseHandle(lpProcessInfo.hThread);
