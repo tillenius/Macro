@@ -116,20 +116,19 @@ LRESULT CALLBACK WndProcAltTab(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
         case WM_KEYDOWN: {
             const int index = getTaskSwitchKey(wParam);
             if (0 <= index && index < g_app->m_apps.size()) {
+                if (g_alttab_window) {
+                    ::ShowWindow(hwnd, SW_HIDE);
+                }
+
                 app_t & app = g_app->m_apps[index];
 
-                HWND hwndActivated = Action::activate(app.activate_exe, app.activate_window, app.activate_class);
-                if (hwndActivated != NULL) {
-                    Action::highlight(hwndActivated);
-                    if (g_alttab_window) {
-                        ::ShowWindow(hwnd, SW_HIDE);
-                    }
+                HWND hwndActivate = Action::findWindow(app.activate_exe, app.activate_window, app.activate_class);
+                if (hwndActivate != NULL) {
+                    SwitchToThisWindow(hwndActivate, TRUE);
+                    Action::highlight(hwndActivate);
                     return 0;
                 }
                 Action::run(app.run_appname, app.run_cmdline, app.run_currdir);
-            }
-            if (g_alttab_window) {
-                ::ShowWindow(hwnd, SW_HIDE);
             }
             return 0;
         }
@@ -226,6 +225,8 @@ LRESULT CALLBACK WndProcOverlay(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
             Gdiplus::Graphics graphics(g_app->hdcBackBuffer);
             graphics.Clear(Color(0, 0, 0, 0));
             graphics.DrawImage(g_app->bitmap, 0, 0);
+            ::SelectObject(g_app->hdcBackBuffer, hbmOld);
+            EndPaint(hwnd, &ps);
 
             POINT ptSrc = { 0, 0 };
 
@@ -236,8 +237,6 @@ LRESULT CALLBACK WndProcOverlay(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
             blendFunction.SourceConstantAlpha = 255;
             SIZE wndSize = { g_overlay_cx, g_overlay_cy };
             ::UpdateLayeredWindow(hwnd, NULL, NULL, &wndSize, g_app->hdcBackBuffer, &ptSrc, RGB(0,0,0), &blendFunction, ULW_ALPHA);
-            ::SelectObject(g_app->hdcBackBuffer, hbmOld);
-            EndPaint(hwnd, &ps);
             return 0;
         }
         case WM_TIMER: {
@@ -352,9 +351,13 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
             return 1;
         }
         if (g_capslock && wParam == WM_KEYDOWN) {
-            if (getTaskSwitchKey(kbdllHookStruct->vkCode) != -1) {
-                PostMessage(g_hWndAltTab, WM_KEYDOWN, kbdllHookStruct->vkCode, 0);
-                return 1;
+            //if ((GetAsyncKeyState(VK_CAPITAL) & 0x8000) != 0) 
+            //if ((GetKeyState(VK_CAPITAL) & 0x0001) != 0)
+            {
+                if (getTaskSwitchKey(kbdllHookStruct->vkCode) != -1) {
+                    PostMessage(g_hWndAltTab, WM_KEYDOWN, kbdllHookStruct->vkCode, 0);
+                    return 1;
+                }
             }
         }
 
