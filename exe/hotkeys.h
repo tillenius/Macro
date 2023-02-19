@@ -1,6 +1,5 @@
 #pragma once
 
-#include "macro.h"
 #include <windows.h>
 #include <vector>
 #include <string>

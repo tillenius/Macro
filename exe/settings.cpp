@@ -410,10 +410,6 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
 
     // Macro
 
-    m.def("play", [](const std::vector<DWORD> & macro, bool wait) {
-        g_app->playback(macro, wait);
-    });
-
     m.def("copy", []() {
         Action::copy();
     });
@@ -425,27 +421,6 @@ PYBIND11_EMBEDDED_MODULE(macro, m) {
     });
     m.def("screenshot", []() {
         Action::screenshot();
-    });
-
-    m.def("get_macro_as_python", []() {
-        const std::vector<DWORD> & macro = g_app->m_macro.get();
-        if (macro.empty()) {
-            return std::string();
-        }
-        std::string ret = "macro.play([\n";
-        for (int i = 0; i < macro.size(); ++i) {
-            int scancode = (WORD) (((macro[i]) >> 16) & 0xff);
-            bool up = (macro[i] & 0x80000000) != 0;
-            char buffer[30];
-            sprintf_s(buffer, "    0x%08x", macro[i]);
-            ret += buffer;
-            ::GetKeyNameTextA((LONG) macro[i], buffer, sizeof(buffer));
-            ret += ", # ";
-            ret += buffer;
-            ret += up ? " up\n" : "\n";
-        }
-        ret += "], True);";
-        return ret;
     });
 
     // Activate and run programs
@@ -936,14 +911,10 @@ bool SettingsFile::load() {
 
         if (py::hasattr(settings, "config")) {
             py::dict config = py::cast<py::dict>(settings.attr("config"));
-            parseConfig(config, "counter_digits", m_settings.m_counterDigits);
-            parseConfig(config, "counter_hex", m_settings.m_counterHex);
-            parseConfig(config, "conter_start", m_settings.m_counter);
             parseConfig(config, "midiinterface", m_settings.m_midiInterface);
 			parseConfig(config, "envdte", m_settings.m_envdte);
 			parseConfig(config, "midichannel", m_settings.m_midiChannel);
-            parseKeyConfig(config, "rec", m_settings.m_recbutton);
-            parseKeyConfig(config, "play", m_settings.m_playbutton);
+            parseConfig(config, "editor", m_settings.m_editor);
         }
 
         if (py::hasattr(settings, "bcl_setup")) {

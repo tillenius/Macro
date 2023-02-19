@@ -1,6 +1,5 @@
 #include "action.h"
 #include "main.h"
-#include "macro.h"
 #include "systray.h"
 #include "resource.h"
 #include "util/threaditerator.h"
@@ -197,8 +196,33 @@ void Action::highlight(HWND hwnd) {
     extern bool g_overlay_fullscreen;
     g_overlay_restart = true;
     g_overlay_fullscreen = IsZoomed(hwnd);
+    
+    HDC hdcScreen = GetDC(NULL);
+    HDC hdcMem = CreateCompatibleDC(hdcScreen);
+    HBITMAP memBitmap = ::CreateCompatibleBitmap(hdcScreen,g_overlay_cx,g_overlay_cy);
+    HGDIOBJ hbmpOld = ::SelectObject(hdcMem,memBitmap);
+
+    RECT rect = g_overlayTarget;
+    RECT screenRect = { g_overlay_x, g_overlay_y, g_overlay_cx, g_overlay_cy };
+    FillRect(hdcMem, &screenRect, (HBRUSH)GetStockObject(WHITE_BRUSH));
+    FillRect(hdcMem, &rect, (HBRUSH)GetStockObject(BLACK_BRUSH));
+
+    BLENDFUNCTION blendFunction;
+    blendFunction.AlphaFormat = AC_SRC_ALPHA;
+    blendFunction.BlendFlags = 0;
+    blendFunction.BlendOp = AC_SRC_OVER;
+    blendFunction.SourceConstantAlpha = 128;
+    POINT ptOrigin{ 0, 0 };
+    SIZE sizeSplash = { g_overlay_cx, g_overlay_cy };
+    POINT ptZero = { 0 };
+    ::UpdateLayeredWindow(g_hwndOverlay, hdcScreen, &ptOrigin, &sizeSplash, hdcMem, &ptZero, RGB(0,0,0), &blendFunction, ULW_ALPHA);
+    ::SelectObject(hdcMem, hbmpOld);
+    ::DeleteDC(hdcMem);
+    ::DeleteObject(memBitmap);
+    ::ReleaseDC(NULL, hdcScreen);
     ::SetWindowPos(g_hwndOverlay, HWND_TOPMOST, g_overlay_x, g_overlay_y, g_overlay_cx, g_overlay_cy, SWP_SHOWWINDOW | SWP_NOCOPYBITS);
-    ::SetTimer(g_hwndOverlay, 0, 1, (TIMERPROC) NULL);
+
+    ::SetTimer(g_hwndOverlay, 0, 500, (TIMERPROC) NULL);
 }
 
 void Action::run(const std::string & appName, const std::string & cmdLine, const std::string & currDir) {

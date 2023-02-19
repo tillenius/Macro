@@ -141,13 +141,11 @@
     <ClCompile Include="contextmenu.cpp" />
     <ClCompile Include="defaults.cpp" />
     <ClCompile Include="hotkeys.cpp" />
-    <ClCompile Include="macro.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="midi.cpp" />
     <ClCompile Include="popuplist.cpp" />
     <ClCompile Include="popupmenu.cpp" />
     <ClCompile Include="settings.cpp" />
-    <ClCompile Include="settingsdlg.cpp" />
     <ClCompile Include="systray.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -156,14 +154,12 @@
     <ClInclude Include="contextmenu.h" />
     <ClInclude Include="hotkeys.h" />
     <ClInclude Include="keynames.h" />
-    <ClInclude Include="macro.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="midi.h" />
     <ClInclude Include="popuplist.h" />
     <ClInclude Include="popupmenu.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="settings.h" />
-    <ClInclude Include="settingsdlg.h" />
     <ClInclude Include="systray.h" />
     <ClInclude Include="util\processiterator.h" />
     <ClInclude Include="util\threaditerator.h" />

@@ -7,8 +7,6 @@ namespace {
 
 constexpr int MENU_QUIT = 3;
 constexpr int MENU_INACTIVATE = 4;
-constexpr int MENU_COUNTERSETTINGS = 5;
-constexpr int MENU_COUNTERRESET = 6;
 constexpr int MENU_EDITCONFIG = 7;
 constexpr int MENU_RELOADCONFIG = 8;
 
@@ -30,20 +28,6 @@ static HMENU initMenu() {
     mii.cch = (UINT) strlen(mii.dwTypeData);
 
     InsertMenuItem(hMenu, 0, FALSE, &mii);
-
-    mii.fMask = MIIM_FTYPE | MIIM_STRING | MIIM_ID;
-    mii.wID = MENU_COUNTERSETTINGS;
-    mii.dwTypeData = (char *) "Counter Settings";
-    mii.cch = (UINT) strlen(mii.dwTypeData);
-
-    InsertMenuItem(hMenu, 1, FALSE, &mii);
-
-    mii.fMask = MIIM_FTYPE | MIIM_STRING | MIIM_ID;
-    mii.wID = MENU_COUNTERRESET;
-    mii.dwTypeData = (char *) "Reset Counter";
-    mii.cch = (UINT) strlen(mii.dwTypeData);
-
-    InsertMenuItem(hMenu, 1, FALSE, &mii);
 
     mii.fMask = MIIM_FTYPE | MIIM_STRING | MIIM_ID;
     mii.wID = MENU_EDITCONFIG;
@@ -95,12 +79,6 @@ bool ContextMenu::handleCommand(WORD id, HINSTANCE hInstance, HWND hWnd) {
         case MENU_INACTIVATE:
             g_app->inactivate();
             CheckMenuItem(m_hMenu, MENU_INACTIVATE, g_app->m_state == MacroApp::recordState_t::INACTIVE ? MF_CHECKED : MF_UNCHECKED );
-            return true;
-        case MENU_COUNTERSETTINGS:
-            g_app->m_settingsDlg.show(hInstance, hWnd);
-            return true;
-        case MENU_COUNTERRESET:
-            g_app->resetCounter();
             return true;
         case MENU_EDITCONFIG:
             g_app->editConfigFile();

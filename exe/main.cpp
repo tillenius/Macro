@@ -1,6 +1,5 @@
 #include "main.h"
 #include "systray.h"
-#include "macro.h"
 #include "hotkeys.h"
 #include "settings.h"
 #include "resource.h"
@@ -148,99 +147,9 @@ LRESULT CALLBACK WndProcOverlay(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
             ::ShowWindow(hwnd, SW_HIDE);
             return 0;
         }
-        case WM_SHOWWINDOW: {
-            if (wParam == FALSE) {
-                Gdiplus::Graphics graphics(g_app->hdcBackBuffer);
-                graphics.Clear(Color(0, 0, 0, 0));
-            }
-            break;
-        }
-        case WM_PAINT: {
-
-            PAINTSTRUCT ps;
-            HDC hdcScreen = BeginPaint(hwnd, &ps);
-
-            if (g_app->hdcBackBuffer == NULL) {
-                g_app->hdcBackBuffer = CreateCompatibleDC(hdcScreen);
-                g_app->bitmap = new Gdiplus::Bitmap(g_overlay_cx, g_overlay_cy);
-                g_app->g1 = Gdiplus::Graphics::FromImage(g_app->bitmap);
-                g_app->hbmBackBuffer = CreateCompatibleBitmap(hdcScreen, g_overlay_cx, g_overlay_cy);
-            }
-
-            HGDIOBJ hbmOld = SelectObject(g_app->hdcBackBuffer, g_app->hbmBackBuffer);
-
-            Gdiplus::Graphics * g1 = g_app->g1;
-            g1->Clear(Color(0,0,0,0));
-
-            const DWORD tick = GetTickCount();
-            float t;
-            if (g_overlay_restart) {
-                t = 0.0f;
-                g_overlay_endtime = tick + 300;
-                g_overlay_restart = false;
-            } else if (tick >= g_overlay_endtime) {
-                t = 0.0f;
-                g_overlay_endtime = 0;
-                ::KillTimer(hwnd, 0);
-                ::ShowWindow(hwnd, SW_HIDE);
-            } else {
-                const float s = 1.0f - (g_overlay_endtime - tick) / 300.0f;
-                t = fmax( sin(s * 3.14159265358979323846f), 0.0f );
-            }
-
-            RECT overlayTarget = g_overlayTarget;
-            if (g_overlay_endtime != 0) {
-
-                overlayTarget.left -= g_overlay_x;
-                overlayTarget.top -= g_overlay_y;
-                overlayTarget.right -= g_overlay_x;
-                overlayTarget.bottom -= g_overlay_y;
-
-                if (!g_overlay_fullscreen) {
-                    Gdiplus::SolidBrush black(Color(255, 0, 0, 0));
-                    int size = (int) (t*10 + 0.5f);
-                    if (size > 0) {
-                        const int x0 = overlayTarget.left - size;
-                        const int y0 = overlayTarget.top - size;
-                        const int x1 = overlayTarget.right - overlayTarget.left + 2 * size;
-                        const int y1 = overlayTarget.bottom - overlayTarget.top + 2 * size;
-                        Gdiplus::Rect srect1(x0, y0, x1, size);
-                        Gdiplus::Rect srect2(x0, y0, size, y1);
-                        Gdiplus::Rect srect3(overlayTarget.right, y0, size, y1);
-                        Gdiplus::Rect srect4(x0, overlayTarget.bottom, x1, size);
-                        g1->FillRectangle(&black, srect1);
-                        g1->FillRectangle(&black, srect2);
-                        g1->FillRectangle(&black, srect3);
-                        g1->FillRectangle(&black, srect4);
-                    }
-                }
-
-                Gdiplus::SolidBrush brush(Gdiplus::Color((BYTE) (t * 127.0f + 0.5f), 205, 0, 0));
-                Gdiplus::Rect srect(overlayTarget.left, overlayTarget.top, 
-                                    overlayTarget.right - overlayTarget.left,
-                                    overlayTarget.bottom - overlayTarget.top);
-                g1->FillRectangle(&brush, srect);
-            }
-
-            Gdiplus::Graphics graphics(g_app->hdcBackBuffer);
-            graphics.Clear(Color(0, 0, 0, 0));
-            graphics.DrawImage(g_app->bitmap, 0, 0);
-            ::SelectObject(g_app->hdcBackBuffer, hbmOld);
-            EndPaint(hwnd, &ps);
-
-            POINT ptSrc = { 0, 0 };
-
-            BLENDFUNCTION blendFunction;
-            blendFunction.AlphaFormat = AC_SRC_ALPHA;
-            blendFunction.BlendFlags = 0;
-            blendFunction.BlendOp = AC_SRC_OVER;
-            blendFunction.SourceConstantAlpha = 255;
-            SIZE wndSize = { g_overlay_cx, g_overlay_cy };
-            ::UpdateLayeredWindow(hwnd, NULL, NULL, &wndSize, g_app->hdcBackBuffer, &ptSrc, RGB(0,0,0), &blendFunction, ULW_ALPHA);
-            return 0;
-        }
         case WM_TIMER: {
-            ::RedrawWindow(hwnd, NULL, NULL, RDW_INTERNALPAINT);
+            ::KillTimer(hwnd, 0);
+            ::ShowWindow(hwnd, SW_HIDE);
             return 0;
         }
     }
@@ -275,12 +184,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             return 0;
         case WM_HOTKEY:
             g_app->hotkey((int) wParam);
-            return 0;
-        case WM_USER_GOTKEY:
-            g_app->key(wParam, lParam);
-            return 0;
-        case WM_USER_GOTDEFERREDKEY:
-            g_app->deferredKey(wParam, lParam);
             return 0;
         case WM_USER_RELOAD:
             g_app->reload(true);
@@ -359,15 +262,6 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
                     return 1;
                 }
             }
-        }
-
-        if (g_hookEnabled) {
-            WPARAM newwparam = kbdllHookStruct->vkCode;
-            LPARAM newlparam = ((LPARAM) kbdllHookStruct->scanCode) << 16;
-            newlparam |= (kbdllHookStruct->flags & LLKHF_EXTENDED) ? (1 << 24) : 0;
-            newlparam |= (kbdllHookStruct->flags & LLKHF_ALTDOWN) ? (1 << 29) : 0;
-            newlparam |= (kbdllHookStruct->flags & LLKHF_UP) ? (1 << 31) : 0;
-            PostMessage(g_hWnd, WM_USER_GOTKEY, newwparam, newlparam);
         }
     }
     return CallNextHookEx(g_hook, nCode, wParam, lParam);
@@ -522,13 +416,6 @@ bool MacroApp::reload(bool enable) {
         return false;
     }
 
-    // stop recording if currently so
-    if (m_state == recordState_t::RECORD) {
-        m_state = recordState_t::IDLE;
-        Unhook();
-        m_macro.clear();
-    }
-
     // disable hotkeys
     if (m_hotkeys.m_enabled) {
         m_hotkeys.disable();
@@ -564,135 +451,25 @@ bool MacroApp::reload(bool enable) {
     return true;
 }
 
-MacroApp::~MacroApp() {
-    if (m_state == recordState_t::RECORD)
-        Unhook();
-}
-
-void MacroApp::record() {
-    if (m_state == recordState_t::RECORD) {
-        m_systray.Icon(IDI_ICON1);
-        Unhook();
-        m_state = recordState_t::IDLE;
-    } else {
-        m_systray.Icon(IDI_ICON3);
-        m_macro.clear();
-        if (!hasHook()) {
-            Hook();
-        }
-        m_state = recordState_t::RECORD;
-    }
-}
-
-void MacroApp::playback(const std::vector<DWORD> & macro, bool wait) {
-    if (wait) {
-        if (m_state != recordState_t::IDLE) {
-            return;
-        }
-
-        for (int i = 8; i < 256; ++i) {
-            if (i == 0x10 || i == 0x11 || i == 0x12) {
-                // ignore VK_SHIFT, VK_CONTROL and VK_MENU.
-                // care about VK_LSHIFT, VK_RSHIFT, VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU instead
-                continue;
-            }
-            if ((::GetAsyncKeyState(i) & 0x8000) != 0) {
-                m_waitFor.push_back(i);
-            }
-        }
-
-        if (m_waitFor.empty()) {
-            Macro::playback(m_settings, macro);
-        } else {
-            Hook();
-            m_state = recordState_t::WAIT;
-            m_waitingToPlay = macro;
-        }
-        return;
-    }
-    else {
-        if (!hasHook())
-            Macro::playback(m_settings, macro);
-    }
-}
-
-void MacroApp::deferredKey(WPARAM wParam, LPARAM lParam) {
-    bool pressed = (lParam & (1 << 31)) == 0;
-    if (pressed) {
-        // skip if already waiting for the pressed key
-        for (int i = 0; i < m_waitFor.size(); ++i) {
-            if (m_waitFor[i] == wParam) {
-                return;
-            }
-        }
-
-        // start waiting for newly pressed key
-        m_waitFor.push_back((int) wParam);
-        return;
-    }
-
-    for (int i = 0; i < m_waitFor.size(); ) {
-        if (m_waitFor[i] == wParam || ::GetAsyncKeyState(m_waitFor[i]) == 0) {
-            if (i != m_waitFor.size() - 1) {
-                m_waitFor[i] = m_waitFor.back();
-            }
-            m_waitFor.pop_back();
-        } else {
-            ++i;
-        }
-    }
-
-    if (m_waitFor.empty()) {
-        m_state = recordState_t::IDLE;
-        Unhook();
-        Macro::playback(m_settings, m_waitingToPlay);
-    }
-}
-
-void MacroApp::key(WPARAM wParam, LPARAM lParam) {
-    if (m_state == recordState_t::WAIT) {
-        // ::GetAsyncKeyState() might not be updated with this key event.
-        // Hopefully reposting it ensures that ::GetAsyncKeyState is up to date.
-        //OutputDebugString((std::string("Key: ") + std::to_string(wParam) + " GetAsyncKeyState: " + std::to_string(::GetAsyncKeyState(wParam)) + "\n").c_str());
-        PostMessage(m_hWnd, WM_USER_GOTDEFERREDKEY, wParam, lParam);
-        return;
-    }
-
-    if (lParam & 0x80000000)
-        m_systray.Icon(IDI_ICON3);
-    else
-        m_systray.Icon(IDI_ICON2);
-    m_macro.gotKey(m_settings, wParam, (DWORD) lParam);
-}
-
 void MacroApp::inactivate() {
     if (m_state == recordState_t::INACTIVE) {
         m_systray.Icon(IDI_ICON1);
         m_hotkeys.enable(m_hWnd);
         m_state = recordState_t::IDLE;
     } else {
-        if (m_state == recordState_t::RECORD) {
-            Unhook();
-        }
         m_hotkeys.disable();
         m_systray.Icon(IDI_ICON4);
         m_state = recordState_t::INACTIVE;
     }
 }
 
-void MacroApp::resetCounter() {
-    m_settings.m_counter = 0;
-}
-
 void MacroApp::editConfigFile() {
-    const std::string file = wstr_to_utf8(m_settingsFile);
-
     PROCESS_INFORMATION lpProcessInfo{0};
-    STARTUPINFO siStartupInfo{0};
+    STARTUPINFOW siStartupInfo{0};
     siStartupInfo.cb = sizeof(STARTUPINFO);
-    const std::string editor = "C:\\Program Files\\Sublime Text\\sublime_text.exe"; // @TODO
-    if (CreateProcess(editor.c_str(),
-        (LPSTR) (std::string("\"") + editor + "\" \"" + file + "\"").c_str(), NULL, NULL, FALSE, NULL, NULL, NULL, &siStartupInfo, &lpProcessInfo)) {
+    const std::wstring editor = m_settings.m_editor;
+    if (CreateProcessW(editor.c_str(),
+        (LPWSTR) (std::wstring(L"\"") + editor + L"\" \"" + m_settingsFile + L"\"").c_str(), NULL, NULL, FALSE, NULL, NULL, NULL, &siStartupInfo, &lpProcessInfo)) {
         CloseHandle(lpProcessInfo.hThread);
         CloseHandle(lpProcessInfo.hProcess);
     }

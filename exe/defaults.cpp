@@ -14,21 +14,6 @@ prev_desc = ""
 prev_command = ""
 
 config = {
-    # number of digits in the counter
-    "counter_digits": 3,
-
-    # if the counter should be in hexadecimal
-    "counter_hex": False,
-
-    # the value the counter starts from
-    "conter_start": 0,
-
-    # the key to start and stop recording a keyboard macro
-    "rec": "SCROLL",
-
-    # the key used to replay the recorded macro
-    "play": "OEM_5",
-
     # which midi interface to use (both input and b-control output)
     "midiinterface": "BCR2000",
 
