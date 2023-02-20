@@ -39,7 +39,7 @@ def switch_window(value):
     else:
         prev_window()
 
-def show_menu():
+def show_menu_old():
     global prev_desc
     global prev_command
     prev_size_cmd = ""
@@ -115,6 +115,36 @@ def show_menu():
     elif choice == 50:
         macro.set_clipboard_text("//=====================================================\n//\n//=====================================================\n")
         macro.paste()
+
+def paste_text(text):
+    macro.set_clipboard_text(text)
+    macro.paste()
+
+menu = [
+    ("Paste stuff", [
+        ("Sub1", lambda: paste_text("Hello1!")),
+        ("Sub2", lambda: paste_text("Hello2!")) ] ),
+    ("Paste more", lambda: paste_text("Hello3!")) ]
+
+def show_menu():
+    index = 0
+    menu2 = []
+    fns = []
+    for item in menu:
+        if isinstance(item[1], list):
+            submenu = []
+            for subitem in item[1]:
+                submenu.append((subitem[0], index))
+                fns.append(subitem[1])
+                index = index + 1
+            menu2.append((item[0], submenu))
+        else:
+            menu2.append((item[0], index))
+            fns.append(item[1])
+            index = index + 1
+    choice = macro.menu(menu2)
+    if choice != -1:
+        fns[choice]()
 
 def test():
     macro.notify("Hello!")
