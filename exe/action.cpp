@@ -11,8 +11,10 @@
 #include <string>
 #include <psapi.h>
 #include <dwmapi.h>
+#include <wingdi.h>
 
 #pragma comment(lib, "Dwmapi.lib")
+#pragma comment(lib, "msimg32.lib")
 
 void Action::getThreadIds(DWORD pid, std::vector<DWORD> & threadids) {
     for (ThreadIterator i; !i.end(); ++i)
@@ -204,7 +206,28 @@ void Action::highlight(HWND hwnd) {
 
     RECT rect = g_overlayTarget;
     RECT screenRect = { g_overlay_x, g_overlay_y, g_overlay_cx, g_overlay_cy };
-    FillRect(hdcMem, &screenRect, (HBRUSH)GetStockObject(WHITE_BRUSH));
+
+    TRIVERTEX vertex[2] ;
+    vertex[0].x     = g_overlay_x;
+    vertex[0].y     = g_overlay_y;
+    vertex[0].Red   = 0x0000;
+    vertex[0].Green = 0x0000;
+    vertex[0].Blue  = 0x0000;
+    vertex[0].Alpha = 0xffff;
+
+    vertex[1].x     = g_overlay_x + g_overlay_cx;
+    vertex[1].y     = g_overlay_y + g_overlay_cy;
+    vertex[1].Red   = 0x0000;
+    vertex[1].Green = 0x0000;
+    vertex[1].Blue  = 0x0000;
+    vertex[1].Alpha = 0xffff;
+
+    GRADIENT_RECT gRect;
+    gRect.UpperLeft  = 0;
+    gRect.LowerRight = 1;
+
+    GradientFill(hdcMem, vertex, 2, &gRect, 1, GRADIENT_FILL_RECT_H);
+
     FillRect(hdcMem, &rect, (HBRUSH)GetStockObject(BLACK_BRUSH));
 
     BLENDFUNCTION blendFunction;
