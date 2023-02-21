@@ -204,19 +204,16 @@ void Action::highlight(HWND hwnd) {
     HBITMAP memBitmap = ::CreateCompatibleBitmap(hdcScreen,g_overlay_cx,g_overlay_cy);
     HGDIOBJ hbmpOld = ::SelectObject(hdcMem,memBitmap);
 
-    RECT rect = g_overlayTarget;
-    RECT screenRect = { g_overlay_x, g_overlay_y, g_overlay_cx, g_overlay_cy };
-
     TRIVERTEX vertex[2] ;
-    vertex[0].x     = g_overlay_x;
-    vertex[0].y     = g_overlay_y;
+    vertex[0].x     = 0;
+    vertex[0].y     = 0;
     vertex[0].Red   = 0x0000;
     vertex[0].Green = 0x0000;
     vertex[0].Blue  = 0x0000;
     vertex[0].Alpha = 0xffff;
 
-    vertex[1].x     = g_overlay_x + g_overlay_cx;
-    vertex[1].y     = g_overlay_y + g_overlay_cy;
+    vertex[1].x     = g_overlay_cx;
+    vertex[1].y     = g_overlay_cy;
     vertex[1].Red   = 0x0000;
     vertex[1].Green = 0x0000;
     vertex[1].Blue  = 0x0000;
@@ -228,13 +225,14 @@ void Action::highlight(HWND hwnd) {
 
     GradientFill(hdcMem, vertex, 2, &gRect, 1, GRADIENT_FILL_RECT_H);
 
+    RECT rect = g_overlayTarget;
     FillRect(hdcMem, &rect, (HBRUSH)GetStockObject(BLACK_BRUSH));
 
     BLENDFUNCTION blendFunction;
     blendFunction.AlphaFormat = AC_SRC_ALPHA;
     blendFunction.BlendFlags = 0;
     blendFunction.BlendOp = AC_SRC_OVER;
-    blendFunction.SourceConstantAlpha = 128;
+    blendFunction.SourceConstantAlpha = 160;
     POINT ptOrigin{ 0, 0 };
     SIZE sizeSplash = { g_overlay_cx, g_overlay_cy };
     POINT ptZero = { 0 };
@@ -243,7 +241,7 @@ void Action::highlight(HWND hwnd) {
     ::DeleteDC(hdcMem);
     ::DeleteObject(memBitmap);
     ::ReleaseDC(NULL, hdcScreen);
-    ::SetWindowPos(g_hwndOverlay, HWND_TOPMOST, g_overlay_x, g_overlay_y, g_overlay_cx, g_overlay_cy, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+    ::SetWindowPos(g_hwndOverlay, HWND_TOPMOST, 0, 0, g_overlay_cx, g_overlay_cy, SWP_SHOWWINDOW | SWP_NOACTIVATE);
 
     ::SetTimer(g_hwndOverlay, 0, 500, (TIMERPROC) NULL);
 }
