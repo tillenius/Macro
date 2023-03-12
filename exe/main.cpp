@@ -34,6 +34,7 @@ bool g_alttab_window = false;
 bool g_request_alttab_on = false;
 bool g_request_alttab_off = false;
 bool g_capslock = false;
+bool g_appswitch = true;
 
 void Hook() { g_hookEnabled = true; }
 void Unhook() { g_hookEnabled = false; }
@@ -228,38 +229,40 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (g_hWnd != NULL && nCode == HC_ACTION) {
         KBDLLHOOKSTRUCT * kbdllHookStruct = (KBDLLHOOKSTRUCT *) lParam;
-        if (kbdllHookStruct->vkCode == VK_CAPITAL) {
-            if ((GetKeyState(VK_CAPITAL) & 0x0001) != 0) {
-                INPUT keys[2] = {0};
-                keys[0].type = INPUT_KEYBOARD;
-                keys[0].ki.wVk = VK_CAPITAL;
-                keys[1].type = INPUT_KEYBOARD;
-                keys[1].ki.wVk = VK_CAPITAL;
-                keys[1].ki.dwFlags = KEYEVENTF_KEYUP;
-                SendInput(2, keys, sizeof(INPUT));
-            }
-            if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
-                g_capslock = true;
-                if (!g_alttab_window && !g_request_alttab_on) {
-                    g_request_alttab_on = true;
-                    PostMessage(g_hWndAltTab, WM_USER_ALTTAB_ON, 0, 0);
+        if (g_appswitch) {
+            if (kbdllHookStruct->vkCode == VK_CAPITAL) {
+                if ((GetKeyState(VK_CAPITAL) & 0x0001) != 0) {
+                    INPUT keys[2] = { 0 };
+                    keys[0].type = INPUT_KEYBOARD;
+                    keys[0].ki.wVk = VK_CAPITAL;
+                    keys[1].type = INPUT_KEYBOARD;
+                    keys[1].ki.wVk = VK_CAPITAL;
+                    keys[1].ki.dwFlags = KEYEVENTF_KEYUP;
+                    SendInput(2, keys, sizeof(INPUT));
                 }
-            } else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
-                g_capslock = false;
-                if (g_alttab_window && !g_request_alttab_off) {
-                    g_request_alttab_off = true;
-                    PostMessage(g_hWndAltTab, WM_USER_ALTTAB_OFF, 0, 0);
+                if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+                    g_capslock = true;
+                    if (!g_alttab_window && !g_request_alttab_on) {
+                        g_request_alttab_on = true;
+                        PostMessage(g_hWndAltTab, WM_USER_ALTTAB_ON, 0, 0);
+                    }
+                } else if (wParam == WM_KEYUP || wParam == WM_SYSKEYUP) {
+                    g_capslock = false;
+                    if (g_alttab_window && !g_request_alttab_off) {
+                        g_request_alttab_off = true;
+                        PostMessage(g_hWndAltTab, WM_USER_ALTTAB_OFF, 0, 0);
+                    }
                 }
+                return 1;
             }
-            return 1;
-        }
-        if (g_capslock && wParam == WM_KEYDOWN) {
-            //if ((GetAsyncKeyState(VK_CAPITAL) & 0x8000) != 0) 
-            //if ((GetKeyState(VK_CAPITAL) & 0x0001) != 0)
-            {
-                if (getTaskSwitchKey(kbdllHookStruct->vkCode) != -1) {
-                    PostMessage(g_hWndAltTab, WM_KEYDOWN, kbdllHookStruct->vkCode, 0);
-                    return 1;
+            if (g_capslock && wParam == WM_KEYDOWN) {
+                //if ((GetAsyncKeyState(VK_CAPITAL) & 0x8000) != 0) 
+                //if ((GetKeyState(VK_CAPITAL) & 0x0001) != 0)
+                {
+                    if (getTaskSwitchKey(kbdllHookStruct->vkCode) != -1) {
+                        PostMessage(g_hWndAltTab, WM_KEYDOWN, kbdllHookStruct->vkCode, 0);
+                        return 1;
+                    }
                 }
             }
         }
@@ -304,36 +307,43 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
     } gdiplus;
 
-    g_overlay_x = ::GetSystemMetrics(SM_XVIRTUALSCREEN);
-    g_overlay_y = ::GetSystemMetrics(SM_YVIRTUALSCREEN);
-    g_overlay_cx = ::GetSystemMetrics(SM_CXVIRTUALSCREEN);
-    g_overlay_cy = ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
-
     g_hWnd = CreateWindow("keymacro", "keymacro", WS_OVERLAPPEDWINDOW, 0, 0, 400, 200, NULL, NULL, hInstance, NULL);
     if (g_hWnd == NULL) {
         MessageBox(0, "CreateWindow failed", 0, MB_OK);
         return 0;
     }
 
-    const int width = g_app->m_switch_screen->GetWidth();
-    const int height = g_app->m_switch_screen->GetHeight();
-    const int cx = ::GetSystemMetrics(SM_CXSCREEN);
-    const int cy = ::GetSystemMetrics(SM_CYSCREEN);
-    g_hWndAltTab = CreateWindowEx( WS_EX_TOPMOST | WS_EX_TOOLWINDOW, "keymacro", "keymacro-alttab", WS_POPUP, (cx - width) / 2, (cy - height) / 2, width, height, NULL, NULL, hInstance, NULL);
-    if (g_hWndAltTab == NULL) {
-        MessageBox(0, "CreateWindow3 failed", 0, MB_OK);
-        return 0;
-    }
+    if (g_appswitch) {
+        g_overlay_x = ::GetSystemMetrics(SM_XVIRTUALSCREEN);
+        g_overlay_y = ::GetSystemMetrics(SM_YVIRTUALSCREEN);
+        g_overlay_cx = ::GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        g_overlay_cy = ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
 
-    g_hwndOverlay = CreateWindowEx( WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW, "keymacro", "keymacro-overlay", WS_OVERLAPPEDWINDOW, g_overlay_x, g_overlay_y, g_overlay_x + g_overlay_cx, g_overlay_y + g_overlay_cy, HWND_DESKTOP, NULL, g_hInstance, NULL);
-    if (g_hwndOverlay == NULL) {
-        MessageBox(0, "CreateWindow2 failed", 0, MB_OK);
-        return 0;
+        const int width = g_app->m_switch_screen->GetWidth();
+        const int height = g_app->m_switch_screen->GetHeight();
+        const int cx = ::GetSystemMetrics(SM_CXSCREEN);
+        const int cy = ::GetSystemMetrics(SM_CYSCREEN);
+        g_hWndAltTab = CreateWindowEx(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, "keymacro", "keymacro-alttab", WS_POPUP, (cx - width) / 2, (cy - height) / 2, width, height, NULL, NULL, hInstance, NULL);
+        if (g_hWndAltTab == NULL) {
+            MessageBox(0, "CreateWindow3 failed", 0, MB_OK);
+            return 0;
+        }
+
+        g_hwndOverlay = CreateWindowEx(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW, "keymacro", "keymacro-overlay", WS_OVERLAPPEDWINDOW, g_overlay_x, g_overlay_y, g_overlay_x + g_overlay_cx, g_overlay_y + g_overlay_cy, HWND_DESKTOP, NULL, g_hInstance, NULL);
+        if (g_hwndOverlay == NULL) {
+            MessageBox(0, "CreateWindow2 failed", 0, MB_OK);
+            return 0;
+        }
     }
 
     struct WindowsHook {
         WindowsHook(HINSTANCE hInstance) {
-            g_hook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, hInstance, NULL);
+            if (g_appswitch) {
+                g_hook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, hInstance, NULL);
+                if (g_hook == NULL) {
+                    MessageBox(NULL, "SetWindowsHookEx failed", 0, MB_OK);
+                }
+            }
         }
         ~WindowsHook() {
             if (g_hook != NULL) {
@@ -341,10 +351,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             }
         }
     } windowshook(hInstance);
-
-    if (g_hook == NULL) {
-        MessageBox(NULL, "SetWindowsHookEx failed", 0, MB_OK);
-    }
 
     MSG msg;
     while (BOOL bRet = GetMessage(&msg, NULL /*g_hWnd*/, 0, 0) != 0) {
