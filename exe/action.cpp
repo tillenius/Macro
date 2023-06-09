@@ -86,11 +86,7 @@ HWND Action::findWindow(const std::string & exeName, const std::string & windowN
     const bool allExes = exeName == "*";
     const bool allClasses = className == "*";
     const bool allTitles = windowName == "*";
-    if (allExes) {
-        for (WindowIterator i; !i.end(); ++i)
-            if (isMainWindow(i.getHWND()))
-                hwnds.push_back(i.getHWND());
-    } else if (!allClasses) {
+    if (!allClasses) {
         HWND hWnd = ::FindWindowEx(NULL, NULL, className.c_str(), NULL);
         while (hWnd != NULL) {
             if ((GetWindowLong(hWnd, GWL_STYLE) & WS_VISIBLE) != 0) {
@@ -107,16 +103,20 @@ HWND Action::findWindow(const std::string & exeName, const std::string & windowN
             }
             hWnd = ::FindWindowEx(NULL, hWnd, className.c_str(), NULL);
         }
+    } else if (allExes) {
+        for (WindowIterator i; !i.end(); ++i)
+            if (isMainWindow(i.getHWND()))
+                hwnds.push_back(i.getHWND());
     } else {
-        std::vector<DWORD> pids;
-        Action::getPidsFromExe(exeName, pids);
-        for (size_t i = 0; i < pids.size(); ++i) {
-            std::vector<DWORD> threads;
-            Action::getThreadIds(pids[i], threads);
-            for (size_t j = 0; j < threads.size(); ++j) {
-                HWND hwnd = Action::getMainWindowFromThread(threads[j]);
-                if (hwnd != NULL) {
-                    hwnds.push_back(hwnd);
+        for (WindowIterator i; !i.end(); ++i) {
+            if (isMainWindow(i.getHWND())) {
+                const DWORD pid = i.getProcessId();
+                const HANDLE hProc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
+                std::vector<char> filename(1024);
+                ::GetModuleFileNameEx(hProc, NULL, filename.data(), (DWORD) filename.size());
+                const std::string fname = filename.data();
+                if (fname.ends_with(exeName)) {
+                    hwnds.push_back(i.getHWND());
                 }
             }
         }
