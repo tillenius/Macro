@@ -176,9 +176,12 @@ void Action::highlight(HWND hwnd) {
         return;
     }
 
-    extern int g_overlay_x, g_overlay_y, g_overlay_cx, g_overlay_cy;
-    extern HWND g_hwndOverlay;
-    extern RECT g_overlayTarget;
+    const int g_overlay_x = ::GetSystemMetrics(SM_XVIRTUALSCREEN);
+    const int g_overlay_y = ::GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const int g_overlay_cx = ::GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    const int g_overlay_cy = ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
+
+    RECT overlayTarget;
 
     if (IsIconic(hwnd)) {
         WINDOWPLACEMENT wp = { sizeof(wp) };
@@ -186,12 +189,12 @@ void Action::highlight(HWND hwnd) {
         if ((wp.flags & WPF_RESTORETOMAXIMIZED) != 0) {
             MONITORINFO mi = { sizeof(mi) };
             GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY), &mi);
-            g_overlayTarget = mi.rcMonitor;
+            overlayTarget = mi.rcMonitor;
         } else {
-            g_overlayTarget = wp.rcNormalPosition;
+            overlayTarget = wp.rcNormalPosition;
         }
     } else {
-        DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &g_overlayTarget, sizeof(g_overlayTarget));
+        DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &overlayTarget, sizeof(overlayTarget));
     }
 
     extern bool g_overlay_restart;
@@ -225,7 +228,11 @@ void Action::highlight(HWND hwnd) {
 
     GradientFill(hdcMem, vertex, 2, &gRect, 1, GRADIENT_FILL_RECT_H);
 
-    RECT rect = g_overlayTarget;
+    RECT rect = overlayTarget;
+    rect.left -= g_overlay_x;
+    rect.right -= g_overlay_x;
+    rect.top -= g_overlay_y;
+    rect.bottom -= g_overlay_y;
     FillRect(hdcMem, &rect, (HBRUSH)GetStockObject(BLACK_BRUSH));
 
     BLENDFUNCTION blendFunction;
@@ -236,14 +243,28 @@ void Action::highlight(HWND hwnd) {
     POINT ptOrigin{ 0, 0 };
     SIZE sizeSplash = { g_overlay_cx, g_overlay_cy };
     POINT ptZero = { 0 };
-    ::UpdateLayeredWindow(g_hwndOverlay, hdcScreen, &ptOrigin, &sizeSplash, hdcMem, &ptZero, RGB(0,0,0), &blendFunction, ULW_ALPHA);
+
+    extern HINSTANCE g_hInstance;
+    HWND hwndOverlay = CreateWindowEx(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW, "keymacro", "keymacro-overlay", WS_OVERLAPPEDWINDOW, g_overlay_x, g_overlay_y, g_overlay_x + g_overlay_cx, g_overlay_y + g_overlay_cy, HWND_DESKTOP, NULL, g_hInstance, NULL);
+    if (hwndOverlay == NULL) {
+        MessageBox(0, "CreateWindow2 failed", 0, MB_OK);
+        return;
+    }
+
+    ::UpdateLayeredWindow(hwndOverlay, hdcScreen, &ptOrigin, &sizeSplash, hdcMem, &ptZero, RGB(0,0,0), &blendFunction, ULW_ALPHA);
     ::SelectObject(hdcMem, hbmpOld);
     ::DeleteDC(hdcMem);
     ::DeleteObject(memBitmap);
     ::ReleaseDC(NULL, hdcScreen);
-    ::SetWindowPos(g_hwndOverlay, HWND_TOPMOST, 0, 0, g_overlay_cx, g_overlay_cy, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+    ::SetWindowPos(hwndOverlay, HWND_TOPMOST, 0, 0, g_overlay_cx, g_overlay_cy, SWP_SHOWWINDOW | SWP_NOACTIVATE);
 
-    ::SetTimer(g_hwndOverlay, 0, 500, (TIMERPROC) NULL);
+    extern HWND g_hwndOverlay;
+    if (g_hwndOverlay != NULL) {
+        DestroyWindow(g_hwndOverlay);
+    }
+    g_hwndOverlay = hwndOverlay;
+
+    ::SetTimer(hwndOverlay, 0, 500, (TIMERPROC) NULL);
 }
 
 void Action::run(const std::string & appName, const std::string & cmdLine, const std::string & currDir) {

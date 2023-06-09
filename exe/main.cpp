@@ -24,7 +24,6 @@ int g_overlay_cy;
 bool g_overlay_restart = false;
 bool g_overlay_fullscreen = false;
 DWORD g_overlay_endtime = 0;
-RECT g_overlayTarget{0, 0, 0, 0};
 HWND g_hWnd = NULL;
 HWND g_hwndOverlay = NULL;
 HWND g_hWndAltTab = NULL;
@@ -145,12 +144,14 @@ LRESULT CALLBACK WndProcAltTab(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 LRESULT CALLBACK WndProcOverlay(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
         case WM_KILLFOCUS: {
-            ::ShowWindow(hwnd, SW_HIDE);
+            ::DestroyWindow(hwnd);
+            g_hwndOverlay = NULL;
             return 0;
         }
         case WM_TIMER: {
             ::KillTimer(hwnd, 0);
-            ::ShowWindow(hwnd, SW_HIDE);
+            ::DestroyWindow(hwnd);
+            g_hwndOverlay = NULL;
             return 0;
         }
     }
@@ -314,11 +315,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
 
     if (g_appswitch) {
-        g_overlay_x = ::GetSystemMetrics(SM_XVIRTUALSCREEN);
-        g_overlay_y = ::GetSystemMetrics(SM_YVIRTUALSCREEN);
-        g_overlay_cx = ::GetSystemMetrics(SM_CXVIRTUALSCREEN);
-        g_overlay_cy = ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
-
         const int width = g_app->m_switch_screen->GetWidth();
         const int height = g_app->m_switch_screen->GetHeight();
         const int cx = ::GetSystemMetrics(SM_CXSCREEN);
@@ -326,12 +322,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         g_hWndAltTab = CreateWindowEx(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, "keymacro", "keymacro-alttab", WS_POPUP, (cx - width) / 2, (cy - height) / 2, width, height, NULL, NULL, hInstance, NULL);
         if (g_hWndAltTab == NULL) {
             MessageBox(0, "CreateWindow3 failed", 0, MB_OK);
-            return 0;
-        }
-
-        g_hwndOverlay = CreateWindowEx(WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW, "keymacro", "keymacro-overlay", WS_OVERLAPPEDWINDOW, g_overlay_x, g_overlay_y, g_overlay_x + g_overlay_cx, g_overlay_y + g_overlay_cy, HWND_DESKTOP, NULL, g_hInstance, NULL);
-        if (g_hwndOverlay == NULL) {
-            MessageBox(0, "CreateWindow2 failed", 0, MB_OK);
             return 0;
         }
     }
