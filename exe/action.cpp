@@ -256,7 +256,7 @@ void Action::highlight(HWND hwnd) {
     ::DeleteDC(hdcMem);
     ::DeleteObject(memBitmap);
     ::ReleaseDC(NULL, hdcScreen);
-    ::SetWindowPos(hwndOverlay, HWND_TOPMOST, 0, 0, g_overlay_cx, g_overlay_cy, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+    ::SetWindowPos(hwndOverlay, HWND_TOPMOST, g_overlay_x, g_overlay_y, g_overlay_cx, g_overlay_cy, SWP_SHOWWINDOW | SWP_NOACTIVATE);
 
     extern HWND g_hwndOverlay;
     if (g_hwndOverlay != NULL) {
