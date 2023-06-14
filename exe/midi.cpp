@@ -119,7 +119,7 @@ void Midi::receive(DWORD dwParam1) {
                             " controller=" + std::to_string(controller) +
                             " data=" + std::to_string(data) + "\n").c_str());
     }
-    if (type == TYPE_CONTROL_CHANGE || type == TYPE_NOTE_ON || type == TYPE_NOTE_OFF ) {
+    if (type == TYPE_CONTROL_CHANGE || type == TYPE_PROGRAM_CHANGE || type == TYPE_NOTE_ON || type == TYPE_NOTE_OFF ) {
         receive(type, channel, controller, data);
     }
 }
