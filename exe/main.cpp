@@ -433,7 +433,9 @@ bool MacroApp::reload(bool enable) {
 
     // enable new midi config
     m_midi.init(m_hWnd, m_settings.m_midiInterface);
-    m_midi.sendMessage(newSettings.m_bclMessage);
+    if (m_settings.m_midiInterface == "BCR2000") {
+        m_midi.sendMessage(newSettings.m_bclMessage);
+    }
     m_midi.setChannelMap(newSettings.m_channelMap);
 
     if (g_hWndAltTab != NULL) {

@@ -33,10 +33,10 @@ public:
     struct Entry {
         bool hires = false;
         int hiData = 0;
-        std::function<void(int)> callback;
+        std::function<void(int,int)> callback;
         Entry() {}
-        Entry(std::function<void(int)> callback) : callback(callback) {}
-        Entry(bool hires, std::function<void(int)> callback) : hires(hires), callback(callback) {}
+        Entry(std::function<void(int,int)> callback) : callback(callback) {}
+        Entry(bool hires, std::function<void(int,int)> callback) : hires(hires), callback(callback) {}
     };
 
     std::unordered_map<int, std::unordered_map<int, Entry>> m_channelMap; // channel -> controller -> entry
@@ -48,8 +48,6 @@ public:
     bool m_midiOutStarted = false;
     bool m_debug = false;
 
-    //static void CALLBACK MidiInProc(HMIDIIN hMidiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2);
-
     Midi & operator=(const Midi &) = delete;
     Midi(const Midi &) = delete;
     Midi() = default;
@@ -57,8 +55,8 @@ public:
     ~Midi();
     bool init(HWND hwnd, const std::string & midiDeviceName);
     void stop();
-    void add(int channel, int controller, std::function<void(int)> callback);
-    void receive(int channel, int controller, int data);
+    void add(int channel, int controller, std::function<void(int,int)> callback);
+    void receive(int type, int channel, int controller, int data);
     void receive(DWORD dwParam);
     bool sendControlChange(char channel, char controller, char value);
     bool sendSysex(int size, char * data);

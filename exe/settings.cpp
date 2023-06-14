@@ -965,13 +965,24 @@ bool SettingsFile::load() {
                     const int controller = nextController(channel);
                     if (type == "button") {
                         setupMidiButton(m_bclMessage, id, channel, controller, config);
-                        m_channelMap[channel][controller] = Midi::Entry([f](int value) { f(value); });
+                        m_channelMap[channel][controller] = Midi::Entry([f](int type, int value) { f(value); });
                     } else if (type == "encoder") {
                         setupMidiEncoder(m_bclMessage, id, channel, controller, config);
-                        m_channelMap[channel][controller] = Midi::Entry([f](int value) { f(value-64); });
+                        m_channelMap[channel][controller] = Midi::Entry([f](int type, int value) { f(value-64); });
                     } else if (type == "cc") {
-                        m_channelMap[channel][controller] = Midi::Entry([f](int value) { f(value); });
+                        m_channelMap[channel][controller] = Midi::Entry([f](int type, int value) { f(value); });
                     }
+                } else if (type == "midi") {
+                    py::dict config = py::cast<py::dict>(t[1]);
+                    if (!config.contains("controller")) {
+                        throw std::exception("midi hotkey without specified 'controller'");
+                    }
+                    const int controller = py::cast<int>(config["controller"]);
+                    const int channel = config.contains("channel") ? py::cast<int>(config["channel"]) : m_settings.m_midiChannel;
+                    if (m_channelMap[channel].contains(controller)) {
+                        throw std::exception("duplicated midi hotkey");
+                    }
+                    m_channelMap[channel][controller] = Midi::Entry([f](int type, int value) { f(type, value); });
                 }
             }
         }

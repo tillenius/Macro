@@ -11,6 +11,9 @@ bool Midi::init(HWND hwnd, const std::string & midiDeviceName) {
     for (UINT i = 0; i < num_in_devs; i++) {
         MIDIINCAPS mic;
         if (!midiInGetDevCaps(i, &mic, sizeof(MIDIINCAPS))) {
+            if (m_debug) {
+                OutputDebugString((std::string("MIDI: Input device ") + std::to_string((int)i+1) + "/" + std::to_string((int)num_in_devs) + ": " + mic.szPname + "\n").c_str());
+            }
             if (midiDeviceName.empty() || midiDeviceName == mic.szPname) {
                 MMRESULT res = midiInOpen(&m_hMidiIn, i, reinterpret_cast<DWORD_PTR>(hwnd), reinterpret_cast<DWORD_PTR>(this), CALLBACK_WINDOW);
                 if (res != 0) {
@@ -18,22 +21,27 @@ bool Midi::init(HWND hwnd, const std::string & midiDeviceName) {
                     return false;
                 }
                 midiInStart(m_hMidiIn);
-                break;
+                if (!m_debug) {
+                    break;
+                }
             }
         }
     }
 
-    if (!midiDeviceName.empty()) {
-        const UINT num_out_devs = midiOutGetNumDevs();
-        for (UINT i = 0; i < num_out_devs; i++) {
-            MIDIOUTCAPS moc;
-            if (!midiOutGetDevCaps(i, &moc, sizeof(MIDIOUTCAPS))) {
-                if (midiDeviceName == moc.szPname) {
-                    MMRESULT res = midiOutOpen(&m_hMidiOut, i, NULL, reinterpret_cast<DWORD_PTR>(this), CALLBACK_NULL);
-                    if (res != 0) {
-                        m_hMidiOut = NULL;
-                        return false;
-                    }
+    const UINT num_out_devs = midiOutGetNumDevs();
+    for (UINT i = 0; i < num_out_devs; i++) {
+        MIDIOUTCAPS moc;
+        if (!midiOutGetDevCaps(i, &moc, sizeof(MIDIOUTCAPS))) {
+            if (m_debug) {
+                OutputDebugString((std::string("MIDI: Output device ") + std::to_string((int)i+1) + "/" + std::to_string((int)num_out_devs) + ": " + moc.szPname + "\n").c_str());
+            }
+            if (midiDeviceName == moc.szPname) {
+                MMRESULT res = midiOutOpen(&m_hMidiOut, i, NULL, reinterpret_cast<DWORD_PTR>(this), CALLBACK_NULL);
+                if (res != 0) {
+                    m_hMidiOut = NULL;
+                    return false;
+                }
+                if (!m_debug) {
                     break;
                 }
             }
@@ -97,7 +105,10 @@ bool Midi::sendSysex(int size, char * data) {
 void Midi::receive(DWORD dwParam1) {
     static constexpr int CHANNEL_MASK = 0x0f;
     static constexpr int TYPE_MASK = 0xf0;
+    static constexpr int TYPE_NOTE_ON = 0x9;
+    static constexpr int TYPE_NOTE_OFF = 0x8;
     static constexpr int TYPE_CONTROL_CHANGE = 0xb;
+    static constexpr int TYPE_PROGRAM_CHANGE = 0xc;
     const int type = ( dwParam1 & TYPE_MASK ) >> 4;
     const int channel = 1 + dwParam1 & CHANNEL_MASK;
     const int controller = (dwParam1 & 0xff00) >> 8;
@@ -108,12 +119,12 @@ void Midi::receive(DWORD dwParam1) {
                             " controller=" + std::to_string(controller) +
                             " data=" + std::to_string(data) + "\n").c_str());
     }
-    if (type == TYPE_CONTROL_CHANGE) {
-        receive(channel, controller, data);
+    if (type == TYPE_CONTROL_CHANGE || type == TYPE_NOTE_ON || type == TYPE_NOTE_OFF ) {
+        receive(type, channel, controller, data);
     }
 }
 
-void Midi::receive(int channel, int controller, int data) {
+void Midi::receive(int type, int channel, int controller, int data) {
     auto it = m_channelMap.find(channel);
     if (it == m_channelMap.end()) {
         return;
@@ -137,7 +148,7 @@ void Midi::receive(int channel, int controller, int data) {
     }
 
 	try {
-		entry.callback(data + entry.hiData);
+		entry.callback(type, data + entry.hiData);
 	}
 	catch (const std::exception & ex) {
 		SwitchToThisWindow(g_app->m_hWnd, TRUE);
@@ -146,6 +157,6 @@ void Midi::receive(int channel, int controller, int data) {
 	entry.hiData = 0;
 }
 
-void Midi::add(int channel, int controller, std::function<void(int)> callback) {
+void Midi::add(int channel, int controller, std::function<void(int,int)> callback) {
     m_channelMap[channel][controller] = Entry(callback);
 }
