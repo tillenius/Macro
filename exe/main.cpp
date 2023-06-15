@@ -304,6 +304,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
         }
         ~GdiPlus() {
+            g_app->m_switch_screen.reset();
             GdiplusShutdown(gdiplusToken);
         }
     } gdiplus;
