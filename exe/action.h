@@ -31,4 +31,5 @@ public:
     static HWND getMainWindowFromPid(DWORD pid);
 
     static void altTab();
+    static bool execute_in_vs(std::wstring & envdte, const char * command);
 };

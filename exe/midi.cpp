@@ -105,10 +105,6 @@ bool Midi::sendSysex(int size, char * data) {
 void Midi::receive(DWORD dwParam1) {
     static constexpr int CHANNEL_MASK = 0x0f;
     static constexpr int TYPE_MASK = 0xf0;
-    static constexpr int TYPE_NOTE_ON = 0x9;
-    static constexpr int TYPE_NOTE_OFF = 0x8;
-    static constexpr int TYPE_CONTROL_CHANGE = 0xb;
-    static constexpr int TYPE_PROGRAM_CHANGE = 0xc;
     const int type = ( dwParam1 & TYPE_MASK ) >> 4;
     const int channel = 1 + dwParam1 & CHANNEL_MASK;
     const int controller = (dwParam1 & 0xff00) >> 8;
@@ -125,6 +121,11 @@ void Midi::receive(DWORD dwParam1) {
 }
 
 void Midi::receive(int type, int channel, int controller, int data) {
+
+    if (g_app->m_midiController.Handle(type, channel, controller, data)) {
+        return;
+    }
+
     auto it = m_channelMap.find(channel);
     if (it == m_channelMap.end()) {
         return;

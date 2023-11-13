@@ -6,12 +6,14 @@
 #include "util/windowiterator.h"
 #include "util/processiterator.h"
 #include "util/wildcards.h"
+#include "comutils.h"
 
 #include <vector>
 #include <string>
 #include <psapi.h>
 #include <dwmapi.h>
 #include <wingdi.h>
+#include <atlbase.h>
 
 #pragma comment(lib, "Dwmapi.lib")
 #pragma comment(lib, "msimg32.lib")
@@ -390,4 +392,23 @@ void Action::altTab() {
     g_alttab_window = true;
     ::ShowWindow(g_hWndAltTab, SW_SHOW);
     ::SetForegroundWindow(g_hWndAltTab);
+}
+
+bool Action::execute_in_vs(std::wstring & envdte, const char * command) {
+    CLSID clsid;
+    if (FAILED(::CLSIDFromProgID(g_app->m_settings.m_envdte.c_str(), &clsid)))
+        return false;
+
+    CComPtr<IUnknown> punk;
+    if (FAILED(::GetActiveObject(clsid, NULL, &punk)))
+        return false;
+
+    CComPtr<IDispatch> pDisp;
+    if (FAILED(punk->QueryInterface(IID_PPV_ARGS(&pDisp))))
+        return false;
+
+    if (!ComUtils::InvokeMethod(pDisp, L"ExecuteCommand", command))
+        return false;
+
+    return true;
 }

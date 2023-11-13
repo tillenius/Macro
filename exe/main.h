@@ -6,6 +6,7 @@
 #include "settings.h"
 #include "contextmenu.h"
 #include "midi.h"
+#include "midicontroller.h"
 #include "app.h"
 
 namespace Gdiplus {
@@ -28,6 +29,7 @@ public:
     Settings m_settings;
     ContextMenu m_contextMenu;
     Midi m_midi;
+    MidiController m_midiController;
     HMENU m_hMenu = NULL;
     enum class recordState_t {IDLE, INACTIVE};
     recordState_t m_state = recordState_t::IDLE;

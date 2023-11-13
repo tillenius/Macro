@@ -30,6 +30,11 @@ public:
 class Midi {
 public:
 
+    static constexpr int TYPE_NOTE_ON = 0x9;
+    static constexpr int TYPE_NOTE_OFF = 0x8;
+    static constexpr int TYPE_CONTROL_CHANGE = 0xb;
+    static constexpr int TYPE_PROGRAM_CHANGE = 0xc;
+
     struct Entry {
         bool hires = false;
         int hiData = 0;

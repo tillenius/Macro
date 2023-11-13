@@ -89,6 +89,9 @@
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalLibraryDirectories>C:\Python\Python310\libs\;$(TargetDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -103,6 +106,9 @@
     <Link>
       <AdditionalLibraryDirectories>D:\Python\Python37\libs;$(TargetDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -117,6 +123,9 @@
     <Link>
       <AdditionalLibraryDirectories>c:\Python\Python310\libs;$(TargetDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -135,14 +144,19 @@
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalLibraryDirectories>D:\Python\Python37\libs;$(TargetDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="action.cpp" />
+    <ClCompile Include="comutils.cpp" />
     <ClCompile Include="contextmenu.cpp" />
     <ClCompile Include="defaults.cpp" />
     <ClCompile Include="hotkeys.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="midi.cpp" />
+    <ClCompile Include="midicontroller.cpp" />
     <ClCompile Include="popuplist.cpp" />
     <ClCompile Include="popupmenu.cpp" />
     <ClCompile Include="settings.cpp" />
@@ -151,11 +165,13 @@
   <ItemGroup>
     <ClInclude Include="action.h" />
     <ClInclude Include="app.h" />
+    <ClInclude Include="comutils.h" />
     <ClInclude Include="contextmenu.h" />
     <ClInclude Include="hotkeys.h" />
     <ClInclude Include="keynames.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="midi.h" />
+    <ClInclude Include="midicontroller.h" />
     <ClInclude Include="popuplist.h" />
     <ClInclude Include="popupmenu.h" />
     <ClInclude Include="resource.h" />
